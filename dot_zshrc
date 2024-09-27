@@ -95,6 +95,6 @@ source $ZSH/oh-my-zsh.sh
 alias be='bundle exec'
 alias f='fzf'
 # eval "$(rbenv init -)"
-
+eval "$(starship init zsh)"
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
