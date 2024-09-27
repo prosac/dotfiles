@@ -59,7 +59,7 @@ ZSH_THEME="agnoster"
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
 plugins=(
-  git chezmoi python fzf
+  git chezmoi python fzf colorize docker-compose docker jira pip podman starship systemd
 )
 
 source $ZSH/oh-my-zsh.sh
@@ -97,3 +97,4 @@ alias f='fzf'
 # eval "$(rbenv init -)"
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
