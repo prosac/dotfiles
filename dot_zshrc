@@ -59,7 +59,7 @@ ZSH_THEME="agnoster"
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
 plugins=(
-  git python fzf colorize docker-compose docker jira pip podman starship systemd
+  git python fzf colorize docker-compose docker jira pip podman starship systemd virtualenvwrapper
 )
 
 source $ZSH/oh-my-zsh.sh
