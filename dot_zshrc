@@ -97,4 +97,5 @@ alias f='fzf'
 # eval "$(rbenv init -)"
 eval "$(starship init zsh)"
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+# testing
 
