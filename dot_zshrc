@@ -59,7 +59,7 @@ ZSH_THEME="agnoster"
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
 plugins=(
-  git python fzf colorize docker-compose docker jira pip podman starship systemd virtualenvwrapper
+  git python fzf colorize docker-compose docker jira pip podman starship systemd pyenv chezmoi
 )
 
 source $ZSH/oh-my-zsh.sh
@@ -92,15 +92,21 @@ source $ZSH/oh-my-zsh.sh
 # Example aliases
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
+
+# ruby
 alias be='bundle exec'
-alias f='fzf'
 # eval "$(rbenv init -)"
+
+# fzf
+alias f='fzf'
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# starship prompt
 eval "$(starship init zsh)"
-eval "$(pyenv init -)"
 
+# pyenv
 export PYENV_ROOT="$HOME/.pyenv"
-[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init --path)"
 eval "$(pyenv virtualenv-init -)"
 
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
