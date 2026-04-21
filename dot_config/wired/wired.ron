@@ -1,0 +1,77 @@
+// Wired — notifications in the 90s Unix workstation palette
+(
+    max_notifications: 0,
+    icon_theme: "Adwaita",
+    timeout: 6000,
+    zero_timeout_behavior: UseDefault,
+    poll_interval: 16,
+
+    debug: false,
+    debug_color: Color(hex: "#00ff00"),
+    debug_color_alt: Color(hex: "#ff0000"),
+
+    layout_blocks: [
+        // Root: anchor to top-right, below waybar.
+        (
+            name: "root",
+            parent: "",
+            hook: Hook(parent_anchor: TR, self_anchor: TR),
+            offset: Vec2(x: -12.0, y: 34.0),
+            params: NotificationBlock((
+                monitor: 0,
+                border_width: 1.0,
+                border_rounding: 0.0,
+                rounded_border_corners: false,
+                background_color:      Color(hex: "#14161a"),
+                border_color:          Color(hex: "#5c9090"), // teal = normal
+                border_color_low:      Color(hex: "#44464a"), // dim grey = low
+                border_color_critical: Color(hex: "#c77f7f"), // dusty red = critical
+                border_color_paused:   Color(hex: "#c7a87f"), // amber = paused
+                gap: Vec2(x: 0.0, y: 6.0),
+                // Subsequent notifications stack downward on the right edge.
+                notification_hook: Hook(parent_anchor: BR, self_anchor: TR),
+            )),
+        ),
+
+        // Summary (title) — steel-blue accent, monospace bold.
+        (
+            name: "summary",
+            parent: "root",
+            hook: Hook(parent_anchor: TL, self_anchor: TL),
+            offset: Vec2(x: 0.0, y: 0.0),
+            params: TextBlock((
+                text: "%s",
+                font: "JetBrains Mono Bold 11",
+                ellipsize: Middle,
+                color:         Color(hex: "#6b7a99"),
+                color_hovered: Color(hex: "#c0c4cc"),
+                padding: Padding(left: 14.0, right: 14.0, top: 10.0, bottom: 2.0),
+                dimensions: (width: (min: 280, max: 360), height: (min: 0, max: 0)),
+            )),
+        ),
+
+        // Body — muted grey, monospace regular.
+        (
+            name: "body",
+            parent: "summary",
+            hook: Hook(parent_anchor: BL, self_anchor: TL),
+            offset: Vec2(x: 0.0, y: 0.0),
+            params: TextBlock((
+                text: "%b",
+                font: "JetBrains Mono 10",
+                ellipsize: End,
+                color:         Color(hex: "#c0c4cc"),
+                color_hovered: Color(hex: "#c0c4cc"),
+                padding: Padding(left: 14.0, right: 14.0, top: 2.0, bottom: 12.0),
+                dimensions: (width: (min: 280, max: 360), height: (min: 0, max: 0)),
+            )),
+        ),
+    ],
+
+    shortcuts: ShortcutsConfig (
+        notification_interact: 1,     // LMB: default action
+        notification_close:    2,     // MMB: dismiss
+        notification_closeall: 3,     // RMB: dismiss all
+        notification_action1:  3,
+    ),
+)
