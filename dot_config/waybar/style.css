@@ -1,0 +1,89 @@
+/* Waybar — minimal, 90s-Unix workstation palette */
+
+* {
+    font-family: "JetBrains Mono", "Iosevka", "DejaVu Sans Mono", monospace;
+    font-size: 12px;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
+}
+
+window#waybar {
+    background: rgba(20, 22, 26, 0.92);
+    color: #c0c4cc;
+    border-bottom: 1px solid rgba(92, 144, 144, 0.35);
+}
+
+/* Module spacing */
+.modules-left, .modules-center, .modules-right {
+    padding: 0 6px;
+}
+
+#workspaces,
+#submap,
+#window,
+#wireplumber,
+#network,
+#battery,
+#clock,
+#tray {
+    padding: 0 8px;
+    background: transparent;
+    color: #c0c4cc;
+}
+
+/* Workspaces: active = steel-blue, urgent = dusty magenta */
+#workspaces button {
+    padding: 0 6px;
+    color: #6a6e78;
+    background: transparent;
+}
+
+#workspaces button:hover {
+    background: transparent;
+    color: #c0c4cc;
+    box-shadow: none;
+    text-shadow: none;
+}
+
+#workspaces button.active {
+    color: #6b7a99;
+}
+
+#workspaces button.urgent {
+    color: #c77fa5;
+}
+
+/* Submap indicator (resize mode, etc.) — desaturated teal */
+#submap {
+    color: #5c9090;
+    font-style: italic;
+}
+
+/* Active window title — dimmer so it recedes */
+#window {
+    color: #8a8e98;
+}
+
+/* Battery states */
+#battery.warning {
+    color: #c7a87f;
+}
+
+#battery.critical {
+    color: #c77f7f;
+}
+
+#battery.charging {
+    color: #5c9090;
+}
+
+/* Clock: accent color */
+#clock {
+    color: #7a8aa6;
+}
+
+/* Tray icons inherit app colors — keep spacing airy */
+#tray {
+    padding-right: 10px;
+}

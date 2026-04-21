@@ -1,0 +1,71 @@
+// -*- mode: jsonc -*-
+{
+    "layer": "top",
+    "position": "top",
+    "height": 26,
+    "spacing": 2,
+
+    "modules-left": [
+        "hyprland/workspaces",
+        "hyprland/submap"
+    ],
+    "modules-center": [
+        "hyprland/window"
+    ],
+    "modules-right": [
+        "wireplumber",
+        "network",
+        "battery",
+        "clock",
+        "tray"
+    ],
+
+    "hyprland/workspaces": {
+        "format": "{id}",
+        "on-click": "activate"
+    },
+
+    "hyprland/submap": {
+        "format": "[{}]"
+    },
+
+    "hyprland/window": {
+        "format": "{title}",
+        "max-length": 80,
+        "separate-outputs": true
+    },
+
+    "wireplumber": {
+        "format": "{volume}%",
+        "format-muted": "muted",
+        "on-click": "pavucontrol",
+        "scroll-step": 5
+    },
+
+    "network": {
+        "format-wifi": "{essid} {signalStrength}%",
+        "format-ethernet": "{ifname}",
+        "format-disconnected": "offline",
+        "tooltip-format": "{ifname} · {ipaddr}"
+    },
+
+    "battery": {
+        "states": {
+            "warning": 30,
+            "critical": 15
+        },
+        "format": "{capacity}%",
+        "format-charging": "+{capacity}%",
+        "format-plugged": "{capacity}%"
+    },
+
+    "clock": {
+        "format": "{:%a %Y-%m-%d  %H:%M}",
+        "tooltip-format": "<tt>{calendar}</tt>"
+    },
+
+    "tray": {
+        "spacing": 8,
+        "icon-size": 16
+    }
+}
