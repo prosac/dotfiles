@@ -67,6 +67,10 @@ run = "ls -1 /home/.snapshots/hourly/ | sort"
 description = "Print path to the most recent snapshot"
 run = "ls -1 /home/.snapshots/hourly/ | sort | tail -1 | sed 's|^|/home/.snapshots/hourly/|'"
 
+[tasks."dots:review"]
+description = "Show dotfile drift since latest snapshot (optional: snapshot name)"
+run = "dotreview"
+
 # --- one-time per-machine setup ---
 
 [tasks."bootstrap:sudoers"]
