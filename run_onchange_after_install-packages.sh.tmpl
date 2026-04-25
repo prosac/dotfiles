@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Idempotent baseline installer.
+# Reruns automatically when this script's rendered content changes
+# (i.e. when .chezmoidata/packages.yaml is edited).
+set -euo pipefail
+
+if ! command -v dnf >/dev/null; then
+  echo "install-packages: dnf not found — skipping (non-Fedora host)." >&2
+  exit 0
+fi
+
+echo "==> Enabling COPRs..."
+{{- range .packages.copr }}
+sudo dnf -y copr enable {{ . | quote }}
+{{- end }}
+
+echo "==> dnf install (idempotent — already-installed packages report as such)..."
+packages=(
+{{- range .packages.dnf }}
+  {{ . | quote }}
+{{- end }}
+)
+sudo dnf -y install "${packages[@]}"
+
+echo "==> User-level tools (installed if missing)..."
+if ! command -v mise >/dev/null; then
+  echo "  installing mise..."
+  curl -fsSL https://mise.run | sh
+fi
+if ! command -v starship >/dev/null; then
+  echo "  installing starship..."
+  curl -fsSL https://starship.rs/install.sh | sudo sh -s -- --yes
+fi
+
+echo "==> Done. Flatpak apps and other personal installs remain manual — see PLAYBOOK.md."

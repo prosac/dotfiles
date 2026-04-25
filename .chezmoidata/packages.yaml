@@ -1,0 +1,40 @@
+# Baseline packages this dotfile setup assumes.
+# Consumed by run_onchange_after_install-packages.sh.tmpl.
+# Edit and run `chezmoi apply` — the script reruns when this file changes.
+
+packages:
+  copr:
+    - solopasha/hyprland
+    - tofik/nwg-shell
+
+  dnf:
+    # Core
+    - git
+    - zsh
+    - vim
+    - fzf
+    - ripgrep
+    - btrfs-progs
+    - flatpak
+
+    # chezmoi pipeline
+    - gitleaks
+    - pre-commit
+
+    # Hyprland WM (solopasha/hyprland)
+    - hyprland
+    - hyprpaper
+    - hypridle
+    - hyprlock
+    - waybar
+    - fuzzel
+    - kando
+
+    # Display tools (tofik/nwg-shell)
+    - nwg-displays
+
+    # System integration / tray / auth
+    - blueman
+    - mate-polkit
+    - network-manager-applet
+    - pavucontrol

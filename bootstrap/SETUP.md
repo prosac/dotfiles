@@ -1,7 +1,20 @@
 # Bootstrap — one-time per-machine setup
 
-After `chezmoi init --apply git@github.com:prosac/dotfiles.git`, run these
-to enable everything that needs root or systemd.
+## 0. Install chezmoi (chicken-and-egg)
+
+Chezmoi has to exist before it can clone its own source. The official one-liner:
+
+```sh
+sh -c "$(curl -fsLS get.chezmoi.io)" -- -b ~/bin
+```
+
+Then add `~/bin` to `$PATH` if it isn't already (it is, after Step 1 deploys `.zshrc`).
+
+```sh
+chezmoi init --apply git@github.com:prosac/dotfiles.git
+```
+
+`init` prompts for `name`, `email`, and `machineClass` (laptop/desktop). On `apply`, the `run_onchange_after_install-packages.sh.tmpl` script runs (see Step 4 below) — interactive `sudo` will be required.
 
 ## 1. Install pre-commit hook in the cloned source
 
@@ -33,7 +46,17 @@ mise run dots:snaps       # list snapshots
 Retention default: 168 hourly snapshots (~1 week). Override with
 `DOTSNAP_RETAIN=N` in the timer environment if you want more/less.
 
-## 3. Enable other user services as needed
+## 3. Baseline packages
+
+Already handled automatically by `run_onchange_after_install-packages.sh.tmpl` during the first `chezmoi apply` (Step 0). To re-trigger it manually after editing `.chezmoidata/packages.yaml`:
+
+```sh
+mise run ch:apply
+```
+
+The script enables COPRs, runs `dnf install`, and curl-installs `mise` and `starship` if absent. All steps idempotent.
+
+## 4. Enable other user services as needed
 
 These ship as units but aren't auto-enabled (your call per machine):
 

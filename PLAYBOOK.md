@@ -183,5 +183,5 @@ chezmoi cat ~/.zshrc
 
 - [x] **Stage 1** — Drift reconciliation, tooling (mise, gitleaks pre-commit), templating policy.
 - [x] **Stage 2** — Session artifacts ingested (systemd user units, `~/.local/bin` scripts, desktop overrides). Btrfs snapshot infrastructure + sudoers bootstrap. `dotreview` tool.
-- [ ] **Stage 3** — `.chezmoi.toml.tmpl` prompts (name, email, machine-class, mouse-device). Template `.gitconfig` + hyprland input device block.
-- [ ] **Stage 4** — `run_onchange_install-packages.sh.tmpl` for dnf + COPR bootstrap.
+- [x] **Stage 3** — `.chezmoi.toml.tmpl` prompts (name, email, machineClass). Templated `.gitconfig` + hyprland input device block (`{{ if eq .machineClass "laptop" }}`).
+- [x] **Stage 4** — `run_onchange_after_install-packages.sh.tmpl` driven by `.chezmoidata/packages.yaml` (COPRs + dnf + mise/starship curl-installers).
