@@ -200,6 +200,7 @@ input {
     }
 }
 
+{{ if eq .machineClass "laptop" -}}
 # Per-device input config
 # See https://wiki.hyprland.org/Configuring/Keywords/#per-device-input-configs for more
 device {
@@ -209,6 +210,7 @@ device {
 }
 
 
+{{ end -}}
 ###################
 ### KEYBINDINGS ###
 ###################

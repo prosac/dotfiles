@@ -1,0 +1,12 @@
+{{/* Rendered by `chezmoi init` to ~/.config/chezmoi/chezmoi.toml.
+     `promptStringOnce` / `promptChoiceOnce` preserve values already set,
+     so re-running init does not re-prompt for keys you've answered. */ -}}
+
+{{- $name := promptStringOnce . "name" "Git name (user.name in .gitconfig)" -}}
+{{- $email := promptStringOnce . "email" "Git email" -}}
+{{- $machineClass := promptChoiceOnce . "machineClass" "Machine class" (list "laptop" "desktop") -}}
+
+[data]
+name = {{ $name | quote }}
+email = {{ $email | quote }}
+machineClass = {{ $machineClass | quote }}
