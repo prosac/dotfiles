@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Create an hourly read-only btrfs snapshot of /home, then trim retention.
+# Requires /etc/sudoers.d/dotsnap (see bootstrap/SETUP.md).
+set -euo pipefail
+
+ROOT=/home
+SNAPDIR=/home/.snapshots/hourly
+RETAIN=${DOTSNAP_RETAIN:-168}    # ~7 days of hourly
+
+stamp=$(date +%Y-%m-%d-%H%M)
+target="$SNAPDIR/$stamp"
+
+if [ -e "$target" ]; then
+  echo "dotsnap: $target already exists, skipping" >&2
+  exit 0
+fi
+
+sudo -n /usr/sbin/btrfs subvolume snapshot -r "$ROOT" "$target" >/dev/null
+echo "dotsnap: created $target"
+
+# Trim oldest beyond retention. Names sort chronologically (YYYY-MM-DD-HHMM).
+mapfile -t snaps < <(ls -1 "$SNAPDIR" 2>/dev/null | sort)
+count=${#snaps[@]}
+if (( count > RETAIN )); then
+  for (( i=0; i < count - RETAIN; i++ )); do
+    sudo -n /usr/sbin/btrfs subvolume delete "$SNAPDIR/${snaps[$i]}" >/dev/null
+    echo "dotsnap: pruned ${snaps[$i]}"
+  done
+fi

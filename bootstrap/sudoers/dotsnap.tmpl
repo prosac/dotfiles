@@ -1,0 +1,12 @@
+# /etc/sudoers.d/dotsnap
+#
+# Allow this user to create/delete hourly btrfs snapshots under
+# /home/.snapshots/hourly/ for dotfile-review purposes.
+#
+# Install via:  mise run bootstrap:sudoers
+# Or manually: sudo install -m 440 -o root -g root <(chezmoi execute-template < .../dotsnap.tmpl) /etc/sudoers.d/dotsnap
+
+Cmnd_Alias DOTSNAP = /usr/sbin/btrfs subvolume snapshot -r /home /home/.snapshots/hourly/*, \
+                     /usr/sbin/btrfs subvolume delete /home/.snapshots/hourly/*
+
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: DOTSNAP

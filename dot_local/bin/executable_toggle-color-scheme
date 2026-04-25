@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Toggle or report the GNOME color-scheme + matching GTK theme.
+#   toggle-color-scheme           -> flip dark <-> light, notify waybar
+#   toggle-color-scheme --status  -> print JSON for waybar
+set -eu
+
+SCHEMA=org.gnome.desktop.interface
+DARK_THEME=Graphite-teal-Dark-nord
+LIGHT_THEME=Graphite-teal-Light-nord
+WAYBAR_SIGNAL=8
+
+current=$(gsettings get "$SCHEMA" color-scheme)
+
+case "${1:-}" in
+  --status)
+    case "$current" in
+      *prefer-dark*)  printf '{"text":"dark","tooltip":"color-scheme: prefer-dark (click to switch to light)","class":"dark"}\n' ;;
+      *prefer-light*) printf '{"text":"light","tooltip":"color-scheme: prefer-light (click to switch to dark)","class":"light"}\n' ;;
+      *)              printf '{"text":"auto","tooltip":"color-scheme: default (click to switch to dark)","class":"auto"}\n' ;;
+    esac
+    exit 0
+    ;;
+esac
+
+case "$current" in
+  *prefer-dark*)
+    gsettings set "$SCHEMA" color-scheme 'prefer-light'
+    gsettings set "$SCHEMA" gtk-theme "$LIGHT_THEME"
+    ;;
+  *)
+    gsettings set "$SCHEMA" color-scheme 'prefer-dark'
+    gsettings set "$SCHEMA" gtk-theme "$DARK_THEME"
+    ;;
+esac
+
+pkill -RTMIN+"$WAYBAR_SIGNAL" waybar 2>/dev/null || true
