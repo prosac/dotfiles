@@ -18,6 +18,17 @@ Two directories, two directions.
 
 There is no merge. Pick a direction per file.
 
+### Direction discipline (foot-gun)
+
+The cardinal rule: **the side you edited is the side you keep.** Crossing them silently destroys work.
+
+- You edited the **live** file → run `chezmoi re-add` (captures into source).
+- You edited the **source** file → run `chezmoi apply` (deploys to target).
+
+Running the wrong command swaps in the *other* side's content. `re-add` after a source edit overwrites your source edit with the (older) target. `apply` after a live edit overwrites your live edit with the (older) source.
+
+If you're not sure which side has the latest, run `chezmoi diff` first — it shows what `apply` would change. If the diff would discard work, run `re-add` first.
+
 ## Workflow loops
 
 ### Day-to-day
@@ -26,19 +37,38 @@ There is no merge. Pick a direction per file.
 2. `mise run ch:status` — see what drifted.
 3. `mise run ch:diff` — review the delta.
 4. `mise run ch:readd` — capture into source.
-5. `mise run ch:push -- "hyprland: add foo binding"` — commit + push (pre-commit hook runs gitleaks).
+5. `mise run ch:push -- "hyprland: add foo binding"` — stage all source changes, commit, push (gitleaks pre-commit runs).
 
 Direct `chezmoi` commands work too; mise tasks are shortcuts + aide-memoire.
+
+### Reviewing changes (what did I touch since yesterday?)
+
+`dotreview` compares live `~/` against the most recent btrfs snapshot of `/home` and buckets the result by chezmoi-tracked vs untracked.
+
+```sh
+mise run dots:review                # against latest snapshot (default)
+mise run dots:review -- 2026-04-25-1300   # against specific snapshot
+mise run dots:snaps                 # list snapshots
+```
+
+Output buckets:
+- **modified-tracked** — chezmoi knows it, you've changed it → `chezmoi re-add`
+- **new-untracked** — new file, chezmoi doesn't know → `chezmoi add`
+- **changed-untracked** — pre-existing but untracked, content differs → review by hand
+- **removed** — was in snapshot, gone in live
+
+Snapshots run hourly via `dotsnap.timer` (systemd user unit). One week of hourly snapshots are retained by default.
 
 ### New machine
 
 ```sh
 chezmoi init --apply git@github.com:prosac/dotfiles.git
 mise run ch:hooks                 # install pre-commit hook in the cloned source
-# mise run bootstrap:sudoers      # Stage 2 (btrfs snapshot sudoers drop-in)
 ```
 
-`chezmoi init` prompts for any personal values (wired in Stage 3: name, email, machine-class).
+Then follow `bootstrap/SETUP.md` for the per-machine privileged setup (sudoers + snapshot timer + enabling user services).
+
+`chezmoi init` prompts for any personal values (Stage 3: name, email, machine-class).
 
 ### Sync (multi-machine, same user)
 
@@ -63,35 +93,46 @@ Example: `dot_config/waybar/config.jsonc.tmpl` → `~/.config/waybar/config.json
 
 All global (defined in `~/.config/mise/config.toml`, reachable from any cwd).
 
-| Task                   | Does                                                    |
-|------------------------|---------------------------------------------------------|
-| `ch:status`            | show drift                                              |
-| `ch:diff`              | show pending changes                                    |
-| `ch:apply`             | source → target                                         |
-| `ch:readd`             | target → source                                         |
-| `ch:managed`           | list managed files                                      |
-| `ch:unmanaged`         | list unmanaged files in target                          |
-| `ch:cd`                | print source path                                       |
-| `ch:git -- <args>`     | run git in source                                       |
-| `ch:sync`              | pull + apply                                            |
-| `ch:push -- "msg"`     | commit + push                                           |
-| `ch:scan`              | gitleaks full scan                                      |
-| `ch:hooks`             | install pre-commit in source                            |
+| Task                       | Does                                                              |
+|----------------------------|-------------------------------------------------------------------|
+| `ch:status`                | show drift                                                        |
+| `ch:diff`                  | show pending changes                                              |
+| `ch:apply`                 | source → target                                                   |
+| `ch:readd`                 | target → source                                                   |
+| `ch:managed` / `ch:unmanaged` | list managed / unmanaged files in target                       |
+| `ch:cd`                    | print source path                                                 |
+| `ch:git -- <args>`         | run git in source                                                 |
+| `ch:sync`                  | pull + apply                                                      |
+| `ch:push -- "msg"`         | stage all source changes, commit, push                            |
+| `ch:scan`                  | gitleaks full scan                                                |
+| `ch:hooks`                 | install pre-commit in source                                      |
+| `dots:snap`                | take a btrfs snapshot now                                         |
+| `dots:snaps`               | list snapshots                                                    |
+| `dots:latest`              | print path to most recent snapshot                                |
+| `dots:review [-- name]`    | bucketed diff against latest (or specified) snapshot              |
+| `bootstrap:sudoers`        | install `/etc/sudoers.d/dotsnap` (one-time per machine)           |
 
 Grows as workflows land.
 
 ## Conventions
 
 - **Public repo** — no secret material, ever. Not in files, not in commit messages, not in commented-out example lines. Gitleaks pre-commit hook enforces this on every commit.
-- **No hardcoded home paths** — use `{{ .chezmoi.homeDir }}` (template) or `$HOME` (shell). Never `/home/<user>`.
-- **Per-machine files** go into `.chezmoiignore`, not source (e.g. `monitors.conf`, `workspaces.conf` — managed by nwg-displays per host).
+- **Templating policy — prefer native expansion.** When the target file format expands `$HOME`, `~`, or similar at runtime, use that. Reach for `{{ .chezmoi.homeDir }}` only when the format can't:
+  - Shell files (`.zshrc`, `.zprofile`, `.profile`) → `$HOME`
+  - Hyprland config → `~` (Hyprland expands it natively)
+  - Waybar `exec` field → `$HOME` works (goes through `popen`)
+  - Waybar `on-click` field → **must** use `{{ .chezmoi.homeDir }}` — GLib `g_spawn_command_line_async` does not expand env vars
+  - JSON, TOML without env support, sudoers, etc. → chezmoi template
+- **No hardcoded home paths.** Never `/home/<user>` in any committed file.
+- **Per-machine files** go into `.chezmoiignore` (e.g. `monitors.conf`, `workspaces.conf` — managed by nwg-displays per host; `.config/systemd/user/*.wants` — systemd's enable state).
 - **Identity** (name, email) comes from `chezmoi init` prompts, stored in local `~/.config/chezmoi/chezmoi.toml` (never committed). *Stage 3.*
+- **Repo-only files** (README.md, PLAYBOOK.md, bootstrap/) live at source root and are listed in `.chezmoiignore` so they aren't applied to `~`.
 - **One commit ≈ one logical change.** Don't mix drift-capture and feature additions.
 
 ## Adding a new file
 
 ```sh
-chezmoi add ~/.config/foo/bar.conf               # plain
+chezmoi add ~/.config/foo/bar.conf               # plain (auto-detects executable bit)
 chezmoi add --template ~/.config/foo/bar.conf    # promote to .tmpl
 ```
 
@@ -122,10 +163,12 @@ chezmoi cat ~/.zshrc
 ## Troubleshooting
 
 - **`MM` status** — both sides changed. Pick: `chezmoi apply <path>` (source wins) or `chezmoi re-add <path>` (target wins). No merge.
+- **Edited source, ran `re-add`, lost the edit** — `re-add` is target → source. Use `apply` after editing source. See *Direction discipline* above.
 - **Template error on apply** — `chezmoi apply -v` shows the failing file.
 - **Rename** — do it in source with `git mv old new` so history is preserved.
 - **Pre-commit hook blocks a commit** — inspect with `gitleaks git --staged --verbose`. Fix the leak; never `--no-verify`.
 - **Pull fails with local source drift** — run `chezmoi re-add` first to capture live edits; commit; then `git pull --rebase`.
+- **`apply` prompts for confirmation in a non-TTY context** — target was edited and source would overwrite. Run `re-add` first to capture the target edit, then continue.
 
 ## What's deliberately NOT in this repo
 
@@ -133,11 +176,12 @@ chezmoi cat ~/.zshrc
 - Browser profiles (`~/.mozilla/`, `~/.config/{Code,chromium,BraveSoftware}/`).
 - Caches, histories (`.zsh_history`, `.bash_history`, `~/.cache/`).
 - Monitor layouts / workspaces (per-machine, nwg-displays-managed).
+- chezmoi's local state (`~/.config/chezmoi/chezmoistate.boltdb`).
 - Anything listed in `.chezmoiignore`.
 
 ## Stages
 
-- [x] **Stage 1** — Drift reconciliation, tooling (mise, gitleaks pre-commit), homeDir templating.
-- [ ] **Stage 2** — Ingest session artifacts (systemd user units, `~/.local/bin` scripts, desktop overrides). Btrfs snapshot infrastructure + sudoers bootstrap.
-- [ ] **Stage 3** — `.chezmoi.toml.tmpl` prompts (name, email, machine-class). Template `.gitconfig` + hyprland input device block.
+- [x] **Stage 1** — Drift reconciliation, tooling (mise, gitleaks pre-commit), templating policy.
+- [x] **Stage 2** — Session artifacts ingested (systemd user units, `~/.local/bin` scripts, desktop overrides). Btrfs snapshot infrastructure + sudoers bootstrap. `dotreview` tool.
+- [ ] **Stage 3** — `.chezmoi.toml.tmpl` prompts (name, email, machine-class, mouse-device). Template `.gitconfig` + hyprland input device block.
 - [ ] **Stage 4** — `run_onchange_install-packages.sh.tmpl` for dnf + COPR bootstrap.
