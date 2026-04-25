@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""dotreview — surface dotfile drift since the last btrfs snapshot.
+
+Compares live $HOME against /home/.snapshots/hourly/<name>/<user>/
+under a curated set of dotfile roots, and buckets each changed path:
+
+  modified-tracked    chezmoi knows it; live has changed → re-add candidate
+  new-untracked       new in live, chezmoi doesn't know → add candidate
+  changed-untracked   pre-existing but not tracked, content changed → review
+  removed             present in snapshot, gone in live
+
+Usage:
+  dotreview                      # compare against latest snapshot
+  dotreview <snapshot-name>      # e.g. 2026-04-25-1300
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+SNAPSHOT_BASE = Path("/home/.snapshots/hourly")
+USER = os.environ.get("USER") or os.getlogin()
+HOME = Path.home()
+
+INCLUDES = [
+    ".config",
+    ".local/bin",
+    ".local/share/applications",
+    ".zshrc", ".zprofile", ".gitconfig", ".profile",
+]
+
+# Basename excludes — skip these dirs/files anywhere under an INCLUDE.
+EXCLUDES = {
+    "cache", "Cache", "Trash", "logs",
+    "Code", "chromium", "google-chrome", "BraveSoftware",
+    "Slack", "discord", "obsidian",
+    "flatpak", "containers",
+    "pnpm", "rustup", "cargo", "go",
+    ".mozilla",
+    "chezmoi",        # local chezmoi state (per-machine, not for source repo)
+    "session",        # kando runtime state
+}
+
+
+def hash_file(p: Path) -> str | None:
+    try:
+        h = hashlib.sha256()
+        with p.open("rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
+def index(root: Path) -> dict[Path, str | None]:
+    """{relpath: content-hash} for every file under root, excludes applied."""
+    if not root.is_dir():
+        return {}
+    out: dict[Path, str | None] = {}
+    for p in root.rglob("*"):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(root)
+        if any(part in EXCLUDES for part in rel.parts):
+            continue
+        out[rel] = hash_file(p)
+    return out
+
+
+def chezmoi_managed() -> set[str]:
+    try:
+        r = subprocess.run(
+            ["chezmoi", "managed", "--path-style=absolute"],
+            check=True, capture_output=True, text=True,
+        )
+        return {ln for ln in r.stdout.splitlines() if ln}
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return set()
+
+
+def main() -> int:
+    if len(sys.argv) > 1:
+        snap_name = sys.argv[1]
+    else:
+        try:
+            snaps = sorted(p.name for p in SNAPSHOT_BASE.iterdir() if p.is_dir())
+        except FileNotFoundError:
+            print(f"dotreview: {SNAPSHOT_BASE} does not exist", file=sys.stderr)
+            return 1
+        if not snaps:
+            print("dotreview: no snapshots yet", file=sys.stderr)
+            return 1
+        snap_name = snaps[-1]
+
+    snap_root = SNAPSHOT_BASE / snap_name / USER
+    if not snap_root.is_dir():
+        print(f"dotreview: {snap_root} not a directory", file=sys.stderr)
+        return 1
+
+    print(f"snapshot: {snap_name}")
+    managed = chezmoi_managed()
+    buckets: dict[str, list[str]] = {
+        "mod-tracked": [], "new-untracked": [],
+        "changed-untracked": [], "removed": [],
+    }
+
+    for inc in INCLUDES:
+        live_root = HOME / inc
+        snap_inc = snap_root / inc
+
+        if live_root.is_dir():
+            live_idx = index(live_root)
+            snap_idx = index(snap_inc)
+            for rel, h in live_idx.items():
+                full = str(live_root / rel)
+                tracked = full in managed
+                if rel not in snap_idx:
+                    buckets["mod-tracked" if tracked else "new-untracked"].append(full)
+                elif snap_idx[rel] != h:
+                    buckets["mod-tracked" if tracked else "changed-untracked"].append(full)
+            for rel in snap_idx:
+                if rel not in live_idx:
+                    buckets["removed"].append(str(live_root / rel))
+
+        elif live_root.is_file():
+            full = str(live_root)
+            tracked = full in managed
+            if not snap_inc.is_file():
+                buckets["mod-tracked" if tracked else "new-untracked"].append(full)
+            elif hash_file(live_root) != hash_file(snap_inc):
+                buckets["mod-tracked" if tracked else "changed-untracked"].append(full)
+
+        elif snap_inc.is_file() or snap_inc.is_dir():
+            buckets["removed"].append(str(live_root))
+
+    titles = {
+        "mod-tracked":       "modified-tracked  → chezmoi re-add",
+        "new-untracked":     "new-untracked     → chezmoi add",
+        "changed-untracked": "changed-untracked → review",
+        "removed":           "removed",
+    }
+    any_output = False
+    for key, items in buckets.items():
+        if not items:
+            continue
+        any_output = True
+        print(f"\n## {titles[key]} ({len(items)})")
+        for x in sorted(set(items)):
+            print(f"  {x}")
+
+    if not any_output:
+        print("\n(no changes — live ~/ matches snapshot under tracked roots)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
