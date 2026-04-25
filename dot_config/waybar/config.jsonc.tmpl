@@ -13,12 +13,23 @@
         "hyprland/window"
     ],
     "modules-right": [
+        "custom/color-scheme",
+        "custom/displays",
         "wireplumber",
+        "bluetooth",
         "network",
         "battery",
         "clock",
         "tray"
     ],
+
+    "custom/color-scheme": {
+        "exec": "{{ .chezmoi.homeDir }}/.local/bin/toggle-color-scheme --status",
+        "on-click": "{{ .chezmoi.homeDir }}/.local/bin/toggle-color-scheme",
+        "return-type": "json",
+        "interval": "once",
+        "signal": 8
+    },
 
     "hyprland/workspaces": {
         "format": "{id}",
@@ -33,6 +44,23 @@
         "format": "{title}",
         "max-length": 80,
         "separate-outputs": true
+    },
+
+    "custom/displays": {
+        "format": "displays",
+        "tooltip": false,
+        "on-click": "nwg-displays"
+    },
+
+    "bluetooth": {
+        "format": "bt",
+        "format-off": "",
+        "format-disabled": "",
+        "format-connected": "bt ({num_connections})",
+        "tooltip-format": "{controller_alias}\t{controller_address}",
+        "tooltip-format-connected": "{controller_alias}\t{controller_address}\n\n{device_enumerate}",
+        "tooltip-format-enumerate-connected": "{device_alias}\t{device_address}",
+        "on-click": "blueman-manager"
     },
 
     "wireplumber": {

@@ -1,0 +1,3 @@
+# Docs that live in the source repo but should not be deployed to $HOME.
+README.md
+PLAYBOOK.md

@@ -19,17 +19,17 @@ $julia\
 $nodejs\
 $nim\
 $python\
+$conda\
 $rust\
 $scala\
 [](fg:#86BBD8 bg:#06969A)\
 $docker_context\
 [](fg:#06969A bg:#33658A)\
-$time\
-[ ](fg:#33658A)\
+[ ](fg:#33658A)\n
 """
 
 # Disable the blank line at the start of the prompt
-# add_newline = false
+add_newline = true
 
 # You can also replace your username with a neat symbol like   or disable this
 # and use the os module below
@@ -69,6 +69,10 @@ truncation_symbol = "…/"
 symbol = " "
 style = "bg:#86BBD8"
 format = '[ $symbol ($version) ]($style)'
+
+[conda]
+style = "bg:#86BBD8"
+format = '[$symbol$environment]($style)'
 
 [docker_context]
 symbol = " "
@@ -132,7 +136,8 @@ format = '[ $symbol ($version) ]($style)'
 symbol = '🐍 '
 pyenv_version_name = true
 style = "bg:#86BBD8"
-format = '[${symbol}${pyenv_prefix}(${version}($style) )(\($virtualenv\) )]($style)'
+format = '[${symbol}(${version}($style) )(\($virtualenv\) )]($style)'
+
 [rust]
 symbol = ""
 style = "bg:#86BBD8"
