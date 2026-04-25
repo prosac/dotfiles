@@ -1,0 +1,15 @@
+# Pre-commit hooks for the dotfiles repo.
+# Goal: no secret material ever lands in this public repo.
+#
+# Install once per clone with: pre-commit install
+# Run manually:               pre-commit run --all-files
+
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (staged changes)
+        description: Scan staged changes for secrets before commit.
+        entry: gitleaks git --staged --verbose --redact
+        language: system
+        pass_filenames: false

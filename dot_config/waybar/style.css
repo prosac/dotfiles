@@ -23,14 +23,24 @@ window#waybar {
 #submap,
 #window,
 #wireplumber,
+#bluetooth,
 #network,
 #battery,
 #clock,
-#tray {
+#tray,
+#custom-color-scheme,
+#custom-displays {
     padding: 0 8px;
     background: transparent;
     color: #c0c4cc;
 }
+
+#bluetooth.connected {
+    color: #7a8aa6;
+}
+
+#custom-color-scheme.dark  { color: #7a8aa6; }
+#custom-color-scheme.light { color: #c7a87f; }
 
 /* Workspaces: active = steel-blue, urgent = dusty magenta */
 #workspaces button {

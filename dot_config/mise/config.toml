@@ -1,0 +1,54 @@
+# Global mise config — tasks available from any cwd.
+# Managed by chezmoi: edit the live file, then `mise run ch:readd`.
+
+# Namespacing:
+#   ch:*   chezmoi workflows
+#   dots:* dotfile change-review / snapshot tooling (coming)
+
+[tasks."ch:status"]
+description = "Show chezmoi drift (source vs target)"
+run = "chezmoi status"
+
+[tasks."ch:diff"]
+description = "Show pending chezmoi changes"
+run = "chezmoi diff"
+
+[tasks."ch:apply"]
+description = "Apply source state to target"
+run = "chezmoi apply -v"
+
+[tasks."ch:readd"]
+description = "Capture target edits into source (use after editing live configs)"
+run = "chezmoi re-add"
+
+[tasks."ch:managed"]
+description = "List files managed by chezmoi"
+run = "chezmoi managed"
+
+[tasks."ch:unmanaged"]
+description = "List files in target home that are NOT managed by chezmoi"
+run = "chezmoi unmanaged --path-style=absolute"
+
+[tasks."ch:cd"]
+description = "Print the chezmoi source path"
+run = "chezmoi source-path"
+
+[tasks."ch:git"]
+description = 'Run git in the chezmoi source repo (mise run ch:git -- status)'
+run = 'chezmoi git -- {{arg(name="args", var=true)}}'
+
+[tasks."ch:sync"]
+description = "Pull source repo and apply"
+run = "chezmoi git -- pull --rebase && chezmoi apply -v"
+
+[tasks."ch:push"]
+description = "Stage all source changes, commit, and push (mise run ch:push -- 'commit msg')"
+run = 'chezmoi git -- add -A && chezmoi git -- commit -m {{arg(name="msg")}} && chezmoi git -- push'
+
+[tasks."ch:scan"]
+description = "Scan the chezmoi source repo for secrets (gitleaks)"
+run = 'gitleaks git --verbose --redact "$(chezmoi source-path)"'
+
+[tasks."ch:hooks"]
+description = "Install pre-commit hooks into the chezmoi source repo"
+run = '(cd "$(chezmoi source-path)" && pre-commit install)'
