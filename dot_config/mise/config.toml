@@ -52,3 +52,32 @@ run = 'gitleaks git --verbose --redact "$(chezmoi source-path)"'
 [tasks."ch:hooks"]
 description = "Install pre-commit hooks into the chezmoi source repo"
 run = '(cd "$(chezmoi source-path)" && pre-commit install)'
+
+# --- dotfile snapshot review ---
+
+[tasks."dots:snap"]
+description = "Create a btrfs snapshot of /home now (manual)"
+run = "dotsnap"
+
+[tasks."dots:snaps"]
+description = "List dotfile snapshots, oldest first"
+run = "ls -1 /home/.snapshots/hourly/ | sort"
+
+[tasks."dots:latest"]
+description = "Print path to the most recent snapshot"
+run = "ls -1 /home/.snapshots/hourly/ | sort | tail -1 | sed 's|^|/home/.snapshots/hourly/|'"
+
+# --- one-time per-machine setup ---
+
+[tasks."bootstrap:sudoers"]
+description = "Install /etc/sudoers.d/dotsnap (renders the template, asks for sudo)"
+run = '''
+set -e
+src="$(chezmoi source-path)/bootstrap/sudoers/dotsnap.tmpl"
+rendered="$(mktemp)"
+chezmoi execute-template < "$src" > "$rendered"
+sudo install -m 440 -o root -g root "$rendered" /etc/sudoers.d/dotsnap
+sudo visudo -cf /etc/sudoers.d/dotsnap
+rm -f "$rendered"
+echo "Installed: /etc/sudoers.d/dotsnap"
+'''

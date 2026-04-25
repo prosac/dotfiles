@@ -1,0 +1,9 @@
+[Unit]
+Description=Hourly btrfs snapshot of /home for dotfile review
+ConditionPathIsMountPoint=/home
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/dotsnap
+Nice=10
+IOSchedulingClass=idle
