@@ -116,6 +116,8 @@ decoration {
     }
 }
 
+
+
 # https://wiki.hyprland.org/Configuring/Variables/#animations
 animations {
     enabled = yes, please :)
@@ -290,6 +292,19 @@ bind = $mainMod, mouse_up, workspace, e-1
 # Move/resize windows with mainMod + LMB/RMB and dragging
 bindm = $mainMod, mouse:272, movewindow
 bindm = $mainMod, mouse:273, resizewindow
+
+# Toggle grouped/tabbed state
+bind = $mainMod, T, togglegroup
+
+# Change active tab (next/previous)
+bind = $mainMod, bracketright, changegroupactive, f
+bind = $mainMod, bracketleft, changegroupactive, b
+
+# Move window to group
+bind = $mainMod SHIFT, H, moveintogroup, l
+bind = $mainMod SHIFT, J, moveintogroup, d
+bind = $mainMod SHIFT, K, moveintogroup, u
+bind = $mainMod SHIFT, L, moveintogroup, r
 
 # Screenshots (grim + slurp + wl-clipboard)
 bind = , Print, exec, grim -g "$(slurp)" - | wl-copy
