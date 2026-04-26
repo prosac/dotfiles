@@ -15,7 +15,7 @@ run = "chezmoi diff"
 
 [tasks."ch:apply"]
 description = "Apply source state to target"
-run = "chezmoi apply -v"
+run = "chezmoi apply"
 
 [tasks."ch:readd"]
 description = "Capture target edits into source (use after editing live configs)"
@@ -39,7 +39,7 @@ run = 'chezmoi git -- {{arg(name="args", var=true)}}'
 
 [tasks."ch:sync"]
 description = "Pull source repo and apply"
-run = "chezmoi git -- pull --rebase && chezmoi apply -v"
+run = "chezmoi git -- pull --rebase && chezmoi apply"
 
 [tasks."ch:push"]
 description = "Stage all source changes, commit, and push (mise run ch:push -- 'commit msg')"

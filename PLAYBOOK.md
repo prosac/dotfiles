@@ -179,6 +179,23 @@ chezmoi cat ~/.zshrc
 - chezmoi's local state (`~/.config/chezmoi/chezmoistate.boltdb`).
 - Anything listed in `.chezmoiignore`.
 
+## One-time bootstrap steps
+
+Some things `chezmoi apply` cannot do on its own. Run these once per machine.
+
+### Walker + Elephant (replaces fuzzel)
+
+`chezmoi apply` rebuilds and installs walker + elephant RPMs (F42 fallback path), but the Elephant systemd unit needs enabling and the leftover fuzzel state needs cleaning:
+
+```sh
+systemctl --user enable --now elephant.service
+rm -rf ~/.config/fuzzel               # orphan from fuzzel removal
+sudo dnf -y remove fuzzel             # only after walker is verified working
+hyprctl reload                        # pick up `$menu = walker`
+```
+
+When this host moves to Fedora 43+, drop the SRPM-rebuild block from `run_onchange_after_install-packages.sh.tmpl` and shrink `.chezmoidata/packages.yaml` to direct `walker elephant elephant-<provider>` entries.
+
 ## Stages
 
 - [x] **Stage 1** — Drift reconciliation, tooling (mise, gitleaks pre-commit), templating policy.
