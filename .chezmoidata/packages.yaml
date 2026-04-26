@@ -6,6 +6,9 @@ packages:
   copr:
     - solopasha/hyprland
     - tofik/nwg-shell
+    # NOTE: errornointernet/walker is the upstream of the SRPMs the install
+    # script fetches and rebuilds locally — not enabled here because it has no
+    # F42 chroot (would 404 on `dnf install`). Re-enable when on F43+.
 
   dnf:
     # Core
@@ -27,7 +30,6 @@ packages:
     - hypridle
     - hyprlock
     - waybar
-    - fuzzel
     - kando
 
     # Display tools (tofik/nwg-shell)
@@ -38,3 +40,32 @@ packages:
     - mate-polkit
     - network-manager-applet
     - pavucontrol
+
+    # Walker + Elephant — SRPM rebuild toolchain (F42 fallback path).
+    # Once on F43+ these can shrink to direct `walker elephant elephant-<provider>` install.
+    - rpm-build
+    - rpmdevtools
+    # Walker (Rust, GTK4)
+    - cargo
+    - cargo-rpm-macros
+    - rust
+    - rustfmt
+    - protobuf-compiler
+    - gtk4-devel
+    - gtk4-layer-shell-devel
+    - cairo-gobject-devel
+    - pango-devel
+    - poppler-glib-devel
+    - gdk-pixbuf2-devel
+    - graphene-devel
+    - glib2-devel
+    # Elephant (Go)
+    - golang
+    - go-rpm-macros
+    - wayland-devel
+    # Elephant runtime recommends (used by selected providers)
+    - bluez
+    - fd-find
+    - libnotify
+    - qalculate-gtk
+    - wl-clipboard

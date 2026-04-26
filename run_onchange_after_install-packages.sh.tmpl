@@ -32,4 +32,82 @@ if ! command -v starship >/dev/null; then
   curl -fsSL https://starship.rs/install.sh | sudo sh -s -- --yes
 fi
 
+# ---- Walker + Elephant: SRPM rebuild for Fedora 42 ---------------------------
+# COPR errornointernet/walker only builds for F43+; we pull its SRPMs (which are
+# distro-agnostic) and rebuild against this host. Once on F43+ this whole block
+# can be dropped in favor of plain `dnf install walker elephant elephant-<prov>`.
+echo "==> Walker + Elephant: checking install state..."
+ELEPHANT_PROVIDERS=(
+  desktopapplications providerlist calc clipboard files runner websearch
+  symbols unicode menus bookmarks snippets bluetooth windows
+)
+elephant_pkgs=(elephant)
+for p in "${ELEPHANT_PROVIDERS[@]}"; do elephant_pkgs+=("elephant-$p"); done
+
+if rpm -q walker "${elephant_pkgs[@]}" >/dev/null 2>&1; then
+  echo "  walker + all selected elephant providers already installed — skipping rebuild."
+else
+  # Stable workdir survives across script reruns so a sudo timeout on the final
+  # `dnf install` doesn't waste the 10-minute rebuild. Only cleaned on success.
+  workdir="${XDG_CACHE_HOME:-$HOME/.cache}/walker-rebuild"
+  mkdir -p "$workdir"
+  rpm_dir="$workdir/rpmbuild/RPMS/x86_64"
+
+  fetch_srpm() {
+    local pkg="$1"
+    echo "  -> fetching SRPM for $pkg"
+    local meta build_id version padded
+    meta=$(curl -fsSL "https://copr.fedorainfracloud.org/api_3/package?ownername=errornointernet&projectname=walker&packagename=${pkg}&with_latest_succeeded_build=true")
+    build_id=$(printf '%s' "$meta" | python3 -c "import sys,json; print(json.load(sys.stdin)['builds']['latest_succeeded']['id'])")
+    version=$(printf '%s' "$meta" | python3 -c "import sys,json; print(json.load(sys.stdin)['builds']['latest_succeeded']['source_package']['version'])")
+    padded=$(printf '%08d' "$build_id")
+    local url="https://download.copr.fedorainfracloud.org/results/errornointernet/walker/fedora-43-x86_64/${padded}-${pkg}/${pkg}-${version}.fc43.src.rpm"
+    curl -fsSL --output-dir "$workdir" -O "$url"
+  }
+
+  rebuild_srpm() {
+    local srpm="$1"
+    echo "  -> rebuilding $(basename "$srpm")"
+    rpmbuild --rebuild --define "_topdir $workdir/rpmbuild" "$srpm" >"$workdir/$(basename "$srpm").log" 2>&1 || {
+      echo "    rebuild FAILED — last 40 lines of build log:"; tail -40 "$workdir/$(basename "$srpm").log"; exit 1
+    }
+  }
+
+  if [[ -d "$rpm_dir" ]] \
+       && compgen -G "$rpm_dir/walker-[0-9]*.x86_64.rpm" >/dev/null \
+       && compgen -G "$rpm_dir/elephant-[0-9]*.x86_64.rpm" >/dev/null; then
+    echo "==> Reusing existing rebuilt RPMs in $rpm_dir"
+  else
+    echo "==> Rebuilding walker + elephant SRPMs locally (this takes a few minutes)..."
+    fetch_srpm walker
+    fetch_srpm elephant
+    for srpm in "$workdir"/*.src.rpm; do rebuild_srpm "$srpm"; done
+  fi
+
+  install_rpms=()
+  # Walker main pkg
+  for r in "$rpm_dir"/walker-[0-9]*.x86_64.rpm; do
+    [[ -e "$r" && "$r" != *debuginfo* && "$r" != *debugsource* ]] && install_rpms+=("$r")
+  done
+  # Elephant main pkg — must filter out provider sub-pkgs whose names start with
+  # a digit (e.g. `1password`), which would otherwise match `elephant-[0-9]*`.
+  for r in "$rpm_dir"/elephant-[0-9]*.x86_64.rpm; do
+    [[ -e "$r" && "$r" != *debuginfo* && "$r" != *debugsource* ]] || continue
+    rest="${r##*/elephant-}"
+    [[ "$rest" =~ ^[0-9]+\. ]] && install_rpms+=("$r")
+  done
+  # Selected provider sub-pkgs only
+  for p in "${ELEPHANT_PROVIDERS[@]}"; do
+    for r in "$rpm_dir"/elephant-${p}-[0-9]*.x86_64.rpm; do
+      [[ -e "$r" && "$r" != *debuginfo* && "$r" != *debugsource* ]] && install_rpms+=("$r")
+    done
+  done
+
+  echo "==> Installing rebuilt RPMs..."
+  printf '   %s\n' "${install_rpms[@]##*/}"
+  sudo dnf -y install "${install_rpms[@]}"
+  # Success: clean the cache. Failures (sudo timeout, dep error) leave it for retry.
+  rm -rf "$workdir"
+fi
+
 echo "==> Done. Flatpak apps and other personal installs remain manual — see PLAYBOOK.md."

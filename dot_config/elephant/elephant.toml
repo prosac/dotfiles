@@ -1,0 +1,13 @@
+# Elephant — provider backend for Walker.
+# Provider .so plugins ship at /etc/xdg/elephant/providers/ via the elephant-<provider> RPMs.
+# Elephant auto-loads everything it finds there; we only narrow with `ignored_providers`.
+
+# uwsm is the session launcher on this host — autodetect handles it.
+auto_detect_launch_prefix = true
+overload_local_env = false
+git_on_demand = true
+
+# Providers we explicitly disabled — leaves the desired set:
+#   desktopapplications, providerlist, calc, clipboard, files, runner,
+#   websearch, symbols, unicode, menus, bookmarks, snippets, bluetooth, windows
+ignored_providers = ["1password", "archlinuxpkgs", "nirisessions", "todo"]
