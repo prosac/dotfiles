@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Idempotent baseline installer.
 # Reruns automatically when this script's rendered content changes
-# (i.e. when .chezmoidata/packages.yaml is edited).
+# (i.e. when .chezmoidata/packages.yaml is edited or the host's Fedora
+# version flips between F42 and F43+).
 set -euo pipefail
 
 if ! command -v dnf >/dev/null; then
@@ -9,15 +10,34 @@ if ! command -v dnf >/dev/null; then
   exit 0
 fi
 
+{{- $f43plus := ge (atoi .chezmoi.osRelease.versionID) 43 }}
+
 echo "==> Enabling COPRs..."
 {{- range .packages.copr }}
 sudo dnf -y copr enable {{ . | quote }}
+{{- end }}
+{{- if $f43plus }}
+{{- range .packages.coprF43Plus }}
+sudo dnf -y copr enable {{ . | quote }}
+{{- end }}
 {{- end }}
 
 echo "==> dnf install (idempotent — already-installed packages report as such)..."
 packages=(
 {{- range .packages.dnf }}
   {{ . | quote }}
+{{- end }}
+{{- if $f43plus }}
+{{- range .packages.dnfF43Plus }}
+  {{ . | quote }}
+{{- end }}
+{{- range .elephantProviders }}
+  {{ printf "elephant-%s" . | quote }}
+{{- end }}
+{{- else }}
+{{- range .packages.dnfF42 }}
+  {{ . | quote }}
+{{- end }}
 {{- end }}
 )
 sudo dnf -y install "${packages[@]}"
@@ -32,14 +52,16 @@ if ! command -v starship >/dev/null; then
   curl -fsSL https://starship.rs/install.sh | sudo sh -s -- --yes
 fi
 
+{{ if not $f43plus -}}
 # ---- Walker + Elephant: SRPM rebuild for Fedora 42 ---------------------------
 # COPR errornointernet/walker only builds for F43+; we pull its SRPMs (which are
-# distro-agnostic) and rebuild against this host. Once on F43+ this whole block
-# can be dropped in favor of plain `dnf install walker elephant elephant-<prov>`.
+# distro-agnostic) and rebuild against this host. On F43+ this whole block is
+# template-skipped and walker/elephant come straight from the COPR.
 echo "==> Walker + Elephant: checking install state..."
 ELEPHANT_PROVIDERS=(
-  desktopapplications providerlist calc clipboard files runner websearch
-  symbols unicode menus bookmarks snippets bluetooth windows
+{{- range .elephantProviders }}
+  {{ . }}
+{{- end }}
 )
 elephant_pkgs=(elephant)
 for p in "${ELEPHANT_PROVIDERS[@]}"; do elephant_pkgs+=("elephant-$p"); done
@@ -109,5 +131,6 @@ else
   # Success: clean the cache. Failures (sudo timeout, dep error) leave it for retry.
   rm -rf "$workdir"
 fi
+{{- end }}
 
 echo "==> Done. Flatpak apps and other personal installs remain manual — see PLAYBOOK.md."
