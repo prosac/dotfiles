@@ -1,15 +1,40 @@
 # Baseline packages this dotfile setup assumes.
-# Consumed by run_onchange_after_install-packages.sh.tmpl.
-# Edit and run `chezmoi apply` — the script reruns when this file changes.
+# Consumed by run_onchange_after_install-packages.sh.tmpl, which picks the
+# right slice based on the host's Fedora version (templates can branch; data
+# files cannot, since chezmoi loads .chezmoidata before the template engine).
+#
+# Two Fedora paths:
+#   F43+ : walker/elephant come from the `errornointernet/walker` COPR.
+#   F42  : that COPR has no F42 chroot. The install script rebuilds walker +
+#          elephant SRPMs locally and needs the Rust/GTK4 + Go build toolchain.
+
+elephantProviders:
+  - desktopapplications
+  - providerlist
+  - calc
+  - clipboard
+  - files
+  - runner
+  - websearch
+  - symbols
+  - unicode
+  - menus
+  - bookmarks
+  - snippets
+  - bluetooth
+  - windows
 
 packages:
+  # COPRs enabled on every Fedora.
   copr:
     - solopasha/hyprland
     - tofik/nwg-shell
-    # NOTE: errornointernet/walker is the upstream of the SRPMs the install
-    # script fetches and rebuilds locally — not enabled here because it has no
-    # F42 chroot (would 404 on `dnf install`). Re-enable when on F43+.
 
+  # COPRs enabled only on Fedora 43+ (no F42 chroot).
+  coprF43Plus:
+    - errornointernet/walker
+
+  # dnf packages installed on every Fedora.
   dnf:
     # Core
     - git
@@ -41,8 +66,24 @@ packages:
     - network-manager-applet
     - pavucontrol
 
-    # Walker + Elephant — SRPM rebuild toolchain (F42 fallback path).
-    # Once on F43+ these can shrink to direct `walker elephant elephant-<provider>` install.
+    # Elephant runtime recommends (used by selected providers)
+    - bluez
+    - fd-find
+    - libnotify
+    - qalculate-gtk
+    - wl-clipboard
+
+  # Fedora 43+ only — installed straight from the walker COPR.
+  # elephant-<provider> packages are added by the install script from
+  # `elephantProviders` above.
+  dnfF43Plus:
+    - walker
+    - elephant
+
+  # Fedora 42 only — SRPM rebuild toolchain (the rebuild itself runs in
+  # run_onchange_after_install-packages.sh.tmpl).
+  dnfF42:
+    # Rebuild infrastructure
     - rpm-build
     - rpmdevtools
     # Walker (Rust, GTK4)
@@ -63,9 +104,3 @@ packages:
     - golang
     - go-rpm-macros
     - wayland-devel
-    # Elephant runtime recommends (used by selected providers)
-    - bluez
-    - fd-find
-    - libnotify
-    - qalculate-gtk
-    - wl-clipboard

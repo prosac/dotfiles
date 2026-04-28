@@ -185,7 +185,14 @@ Some things `chezmoi apply` cannot do on its own. Run these once per machine.
 
 ### Walker + Elephant (replaces fuzzel)
 
-`chezmoi apply` rebuilds and installs walker + elephant RPMs (F42 fallback path), but the Elephant systemd unit needs enabling and the leftover fuzzel state needs cleaning:
+`chezmoi apply` installs walker + elephant. The path it takes branches on the host's Fedora version:
+
+- **F43+** — installed straight from the `errornointernet/walker` COPR.
+- **F42** — that COPR has no F42 chroot, so the install script rebuilds walker + elephant SRPMs locally. Pulls in a Rust/GTK4 + Go build toolchain (`.chezmoidata/packages.yaml` → `dnfF42`) and runs the rebuild block in `run_onchange_after_install-packages.sh.tmpl`.
+
+The selection is automatic via `.chezmoi.osRelease.versionID`; the same source state works on both versions.
+
+After install, the Elephant systemd unit needs enabling and the leftover fuzzel state needs cleaning:
 
 ```sh
 systemctl --user enable --now elephant.service
@@ -193,8 +200,6 @@ rm -rf ~/.config/fuzzel               # orphan from fuzzel removal
 sudo dnf -y remove fuzzel             # only after walker is verified working
 hyprctl reload                        # pick up `$menu = walker`
 ```
-
-When this host moves to Fedora 43+, drop the SRPM-rebuild block from `run_onchange_after_install-packages.sh.tmpl` and shrink `.chezmoidata/packages.yaml` to direct `walker elephant elephant-<provider>` entries.
 
 ### DMS (DankMaterialShell) session — optional sandbox
 
