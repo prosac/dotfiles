@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Hyprland session variant that runs DankMaterialShell (dms) in place of waybar.
+# Used by /usr/share/wayland-sessions/hyprland-dms.desktop (installed via
+# `mise run bootstrap:dms-session`).
+#
+# Mechanism: --runtime mask waybar (so graphical-session.target won't pull it in)
+# and --runtime enable dms (so it does). Both runtime changes live in /run and
+# vanish when the user's systemd manager exits (full logout); the EXIT trap
+# also reverses them on graceful session exit.
+set -euo pipefail
+
+systemctl --user --runtime mask waybar.service
+systemctl --user --runtime enable dms.service
+
+trap 'systemctl --user --runtime unmask waybar.service; systemctl --user --runtime disable dms.service' EXIT
+
+uwsm start -- hyprland.desktop

@@ -196,6 +196,16 @@ hyprctl reload                        # pick up `$menu = walker`
 
 When this host moves to Fedora 43+, drop the SRPM-rebuild block from `run_onchange_after_install-packages.sh.tmpl` and shrink `.chezmoidata/packages.yaml` to direct `walker elephant elephant-<provider>` entries.
 
+### DMS (DankMaterialShell) session — optional sandbox
+
+A second Hyprland session entry that swaps waybar for DMS, for trying DMS in isolation without changing the default session:
+
+```sh
+mise run bootstrap:dms-session        # one-time: installs /usr/share/wayland-sessions/hyprland-dms.desktop
+```
+
+Then log out and pick "Hyprland (DMS)" at GDM. The wrapper at `~/.local/bin/hyprland-dms` runtime-masks waybar.service and runtime-enables dms.service for that session only; defaults are restored on logout. To remove: `sudo rm /usr/share/wayland-sessions/hyprland-dms.desktop`.
+
 ## Stages
 
 - [x] **Stage 1** — Drift reconciliation, tooling (mise, gitleaks pre-commit), templating policy.

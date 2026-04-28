@@ -3,6 +3,7 @@ Description=hypridle
 PartOf=graphical-session.target
 After=graphical-session.target
 Requisite=graphical-session.target
+ConditionEnvironment=XDG_CURRENT_DESKTOP=hyprland:Hyprland
 
 [Service]
 Type=simple

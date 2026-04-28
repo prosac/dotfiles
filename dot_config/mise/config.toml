@@ -85,3 +85,20 @@ sudo visudo -cf /etc/sudoers.d/dotsnap
 rm -f "$rendered"
 echo "Installed: /etc/sudoers.d/dotsnap"
 '''
+
+[tasks."bootstrap:dms-session"]
+description = "Install the 'Hyprland (DMS)' wayland session entry (sudo install + disable dms.service in default Hyprland)"
+run = '''
+set -e
+src="$(chezmoi source-path)/bootstrap/wayland-sessions/hyprland-dms.desktop.tmpl"
+rendered="$(mktemp --suffix=.desktop)"
+chezmoi execute-template < "$src" > "$rendered"
+sudo install -m 644 -o root -g root "$rendered" /usr/share/wayland-sessions/hyprland-dms.desktop
+rm -f "$rendered"
+# Persistently disable dms in the default session — the wrapper runtime-enables
+# it for the DMS session only.
+systemctl --user disable dms.service 2>/dev/null || true
+echo "Installed: /usr/share/wayland-sessions/hyprland-dms.desktop"
+echo "dms.service is now disabled in the default Hyprland session."
+echo "Log out and pick 'Hyprland (DMS)' at GDM to try it."
+'''
