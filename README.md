@@ -1,5 +1,3 @@
-# dotfiles
+# Dotfiles
 
-My dotfiles, managed via chezmoi.
-
-You won't find anything special here. I mostly use standard stuff and cherry pick things together from people who are really into certain things.
+My dotfiles, managed via `chezmoi`. Includes `zsh` and `oh-my-zsh`, setup for `btrfs` snapshots of `$HOME`, a nice config arround `hyprland`, `elephant`, `walker`, `waybar` that is taylored towards users who use a form of `vim` or `emacs` with evil-mode (e.g. `doom emacs`). `mise` as neat interface for common tasks arround the whole thing.
