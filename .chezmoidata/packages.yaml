@@ -55,7 +55,6 @@ packages:
     - hypridle
     - hyprlock
     - waybar
-    - kando
 
     # Display tools (tofik/nwg-shell)
     - nwg-displays
@@ -103,4 +102,5 @@ packages:
     # Elephant (Go)
     - golang
     - go-rpm-macros
+    - kando
     - wayland-devel
