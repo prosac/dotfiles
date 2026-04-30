@@ -1,0 +1,46 @@
+# Noti — 90s Unix workstation palette
+[general]
+font = "JetBrains Mono"
+width = 420
+anchor = "top-right"
+offset = [12, 34]   # 12px from right edge, 34px from top (clears waybar)
+gap = 6
+
+[display]
+timeout = 6000
+theme = "default"
+
+[display.padding]
+vertical = 14
+horizontal = 18
+
+[display.border]
+size = 2
+radius = 8
+
+[display.summary]
+font_size = 22
+
+[display.body]
+font_size = 20
+
+[[theme]]
+name = "default"
+
+[theme.low]
+foreground = "#c0c4cc"
+background = "#14161a"
+border = "#44464a"
+summary = "#e8ecf0"
+
+[theme.normal]
+foreground = "#c0c4cc"
+background = "#14161a"
+border = "#5c9090"
+summary = "#e8ecf0"
+
+[theme.critical]
+foreground = "#c0c4cc"
+background = "#14161a"
+border = "#c77f7f"
+summary = "#e8ecf0"
