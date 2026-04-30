@@ -52,12 +52,12 @@ $menu = walker
 # exec-once = waybar & hyprpaper & firefox
 
 # Workspace display names (persistent workspaces keep their names across empty/refill)
-exec-once = hyprctl rename-workspace 1 "1: Overflow"
-exec-once = hyprctl rename-workspace 2 "2: Scratch"
-exec-once = hyprctl rename-workspace 3 "3: Editing"
-exec-once = hyprctl rename-workspace 4 "4: Terminal"
-exec-once = hyprctl rename-workspace 5 "5: Browser"
-exec-once = hyprctl rename-workspace 6 "6: Comms"
+exec-once = hyprctl dispatch renameworkspace 1 "1: Comms"
+exec-once = hyprctl dispatch renameworkspace 2 "2: Extra"
+exec-once = hyprctl dispatch renameworkspace 3 "3: Browser"
+exec-once = hyprctl dispatch renameworkspace 4 "4: Editing"
+exec-once = hyprctl dispatch renameworkspace 5 "5: Terminal"
+exec-once = hyprctl dispatch renameworkspace 6 "6: Extra 2"
 
 
 
@@ -342,6 +342,9 @@ bindl = , XF86AudioPrev, exec, playerctl previous
 # See https://wiki.hyprland.org/Configuring/Workspace-Rules/ for workspace rules
 
 # Workspace rules (persistent keeps workspace alive when empty, preserving its name)
+# Laptops: workspaces 1-2 on internal display, rest on external.
+# Desktop: all workspaces on external display.
+{{ if eq .machineClass "laptop" -}}
 workspace = 1, monitor:eDP-1, persistent:true
 workspace = 2, monitor:eDP-1, persistent:true
 workspace = 3, monitor:HDMI-A-1, default:true, persistent:true
@@ -352,6 +355,18 @@ workspace = 7, monitor:HDMI-A-1
 workspace = 8, monitor:HDMI-A-1
 workspace = 9, monitor:HDMI-A-1
 workspace = 10, monitor:HDMI-A-1
+{{ else -}}
+workspace = 1, monitor:HDMI-A-1, persistent:true
+workspace = 2, monitor:HDMI-A-1, persistent:true
+workspace = 3, monitor:HDMI-A-1, default:true, persistent:true
+workspace = 4, monitor:HDMI-A-1, persistent:true
+workspace = 5, monitor:HDMI-A-1, persistent:true
+workspace = 6, monitor:HDMI-A-1, persistent:true
+workspace = 7, monitor:HDMI-A-1
+workspace = 8, monitor:HDMI-A-1
+workspace = 9, monitor:HDMI-A-1
+workspace = 10, monitor:HDMI-A-1
+{{ end -}}
 
 # Example windowrule v1
 # windowrule = float, ^(kitty)$
