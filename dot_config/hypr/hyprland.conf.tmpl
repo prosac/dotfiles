@@ -35,7 +35,7 @@ source = ~/.config/hypr/workspaces.conf
 # See https://wiki.hyprland.org/Configuring/Keywords/
 
 # Set programs that you use
-$terminal = kitty
+$terminal = ghostty
 $fileManager = dolphin
 $menu = walker
 
@@ -50,6 +50,14 @@ $menu = walker
 # exec-once = $terminal
 # exec-once = nm-applet &
 # exec-once = waybar & hyprpaper & firefox
+
+# Workspace display names (persistent workspaces keep their names across empty/refill)
+exec-once = hyprctl rename-workspace 1 "1: Overflow"
+exec-once = hyprctl rename-workspace 2 "2: Scratch"
+exec-once = hyprctl rename-workspace 3 "3: Editing"
+exec-once = hyprctl rename-workspace 4 "4: Terminal"
+exec-once = hyprctl rename-workspace 5 "5: Browser"
+exec-once = hyprctl rename-workspace 6 "6: Comms"
 
 
 
@@ -206,9 +214,9 @@ input {
 # Per-device input config
 # See https://wiki.hyprland.org/Configuring/Keywords/#per-device-input-configs for more
 device {
-    name = logitech-usb-receiver
+    name = logitech-g502-x-plus-1
     accel_profile = flat
-    sensitivity = -0.3
+    sensitivity = -0.5
 }
 
 
@@ -232,6 +240,7 @@ bind = $mainMod, M, fullscreen, 1
 bind = $mainMod, V, togglefloating,
 bind = $mainMod, P, pseudo, # dwindle
 bind = $mainMod, Escape, exec, loginctl lock-session
+bind = $mainMod SHIFT, Escape, exec, systemctl suspend
 bind = $mainMod SHIFT, T, exec, ~/.local/bin/toggle-color-scheme
 
 # Focus (vim hjkl)
@@ -300,11 +309,11 @@ bind = $mainMod, T, togglegroup
 bind = $mainMod, bracketright, changegroupactive, f
 bind = $mainMod, bracketleft, changegroupactive, b
 
-# Move window to group
-bind = $mainMod SHIFT, H, moveintogroup, l
-bind = $mainMod SHIFT, J, moveintogroup, d
-bind = $mainMod SHIFT, K, moveintogroup, u
-bind = $mainMod SHIFT, L, moveintogroup, r
+# Move window into group (CTRL = stronger than SHIFT swap)
+bind = $mainMod CTRL, H, moveintogroup, l
+bind = $mainMod CTRL, J, moveintogroup, d
+bind = $mainMod CTRL, K, moveintogroup, u
+bind = $mainMod CTRL, L, moveintogroup, r
 
 # Screenshots (grim + slurp + wl-clipboard)
 bind = , Print, exec, grim -g "$(slurp)" - | wl-copy
@@ -332,6 +341,18 @@ bindl = , XF86AudioPrev, exec, playerctl previous
 # See https://wiki.hyprland.org/Configuring/Window-Rules/ for more
 # See https://wiki.hyprland.org/Configuring/Workspace-Rules/ for workspace rules
 
+# Workspace rules (persistent keeps workspace alive when empty, preserving its name)
+workspace = 1, monitor:eDP-1, persistent:true
+workspace = 2, monitor:eDP-1, persistent:true
+workspace = 3, monitor:HDMI-A-1, default:true, persistent:true
+workspace = 4, monitor:HDMI-A-1, persistent:true
+workspace = 5, monitor:HDMI-A-1, persistent:true
+workspace = 6, monitor:HDMI-A-1, persistent:true
+workspace = 7, monitor:HDMI-A-1
+workspace = 8, monitor:HDMI-A-1
+workspace = 9, monitor:HDMI-A-1
+workspace = 10, monitor:HDMI-A-1
+
 # Example windowrule v1
 # windowrule = float, ^(kitty)$
 
@@ -343,6 +364,12 @@ windowrulev2 = suppressevent maximize, class:.*
 
 # Fix some dragging issues with XWayland
 windowrulev2 = nofocus,class:^$,title:^$,xwayland:1,floating:1,fullscreen:0,pinned:0
+
+# Chromium notification popups — no app_id or title set by the browser
+windowrulev2 = float,   class:^$,title:^$,xwayland:0
+windowrulev2 = pin,     class:^$,title:^$,xwayland:0
+windowrulev2 = move 100%-w-12 40, class:^$,title:^$,xwayland:0
+windowrulev2 = nofocus, class:^$,title:^$,xwayland:0
 
 # Kando radial menu — force fit to focused monitor (cursor's monitor via follow_mouse)
 windowrulev2 = float, class:^(menu\.kando\.Kando)$,title:^(Kando Menu)$

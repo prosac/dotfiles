@@ -1,5 +1,5 @@
 [Unit]
-Description=wired notification daemon
+Description=noti notification daemon
 PartOf=graphical-session.target
 After=graphical-session.target
 Requisite=graphical-session.target
@@ -7,7 +7,7 @@ ConditionEnvironment=XDG_CURRENT_DESKTOP=Hyprland
 
 [Service]
 Type=simple
-ExecStart=/home/jo/.cargo/bin/wired
+ExecStart=/home/jo/.cargo/bin/noti run
 Restart=on-failure
 RestartSec=2
 Slice=session.slice
