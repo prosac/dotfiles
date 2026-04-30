@@ -1,9 +1,9 @@
-# Noti — 90s Unix workstation palette
+# Noti — Doom One palette
 [general]
 font = "JetBrains Mono"
 width = 420
 anchor = "top-right"
-offset = [12, 34]   # 12px from right edge, 34px from top (clears waybar)
+offset = [24, 24]   # 12px from right edge, 34px from top (clears waybar)
 gap = 6
 
 [display]
@@ -28,19 +28,19 @@ font_size = 20
 name = "default"
 
 [theme.low]
-foreground = "#c0c4cc"
-background = "#14161a"
-border = "#44464a"
-summary = "#e8ecf0"
+foreground = "#bbc2cf"
+background = "#282c34"
+border = "#3f444a"
+summary = "#bbc2cf"
 
 [theme.normal]
-foreground = "#c0c4cc"
-background = "#14161a"
-border = "#5c9090"
-summary = "#e8ecf0"
+foreground = "#bbc2cf"
+background = "#282c34"
+border = "#51afef"
+summary = "#51afef"
 
 [theme.critical]
-foreground = "#c0c4cc"
-background = "#14161a"
-border = "#c77f7f"
-summary = "#e8ecf0"
+foreground = "#bbc2cf"
+background = "#282c34"
+border = "#ff6c6b"
+summary = "#ff6c6b"
