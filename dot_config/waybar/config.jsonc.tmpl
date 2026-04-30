@@ -13,6 +13,7 @@
         "hyprland/window"
     ],
     "modules-right": [
+        "custom/gradia",
         "custom/color-scheme",
         "custom/displays",
         "wireplumber",
@@ -22,6 +23,12 @@
         "clock",
         "tray"
     ],
+
+    "custom/gradia": {
+        "format": "scr",
+        "tooltip": false,
+        "on-click": "flatpak run be.alexandervanhee.gradia"
+    },
 
     "custom/color-scheme": {
         "exec": "{{ .chezmoi.homeDir }}/.local/bin/toggle-color-scheme --status",
