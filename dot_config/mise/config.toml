@@ -41,6 +41,10 @@ run = 'chezmoi git -- {{arg(name="args", var=true)}}'
 description = "Pull source repo and apply"
 run = "chezmoi git -- pull --rebase && chezmoi apply"
 
+[tasks."ch:commit"]
+description = "Stage all source changes and commit (mise run ch:commit -- 'commit msg')"
+run = 'chezmoi git -- add -A && chezmoi git -- commit -m {{arg(name="msg")}}'
+
 [tasks."ch:push"]
 description = "Stage all source changes, commit, and push (mise run ch:push -- 'commit msg')"
 run = 'chezmoi git -- add -A && chezmoi git -- commit -m {{arg(name="msg")}} && chezmoi git -- push'
