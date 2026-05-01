@@ -5,8 +5,10 @@
 {{- $name := promptStringOnce . "name" "Git name (user.name in .gitconfig)" -}}
 {{- $email := promptStringOnce . "email" "Git email" -}}
 {{- $machineClass := promptChoiceOnce . "machineClass" "Machine class" (list "laptop" "desktop") -}}
+{{- $passwordManager := promptChoiceOnce . "passwordManager" "Password manager" (list "1password" "bitwarden" "none") -}}
 
 [data]
 name = {{ $name | quote }}
 email = {{ $email | quote }}
 machineClass = {{ $machineClass | quote }}
+passwordManager = {{ $passwordManager | quote }}
