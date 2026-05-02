@@ -1,0 +1,144 @@
+/* SwayOSD Custom Style - Modern & Elegant */
+
+/* Base OSD window styling */
+osd-window {
+    background-color: rgba(30, 30, 30, 0.95);
+    border-radius: 12px;
+    padding: 16px 24px;
+    margin: 24px;
+    min-width: 200px;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 18px;
+    font-weight: 500;
+    color: #e0e0e0;
+    border: 1px solid rgba(100, 100, 100, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* Volume OSD specific */
+volume-osd {
+    spacing: 8px;
+}
+
+volume-icon {
+    min-width: 32px;
+    min-height: 32px;
+    icon-size: 32px;
+}
+
+volume-label {
+    font-size: 20px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+volume-percentage {
+    font-size: 32px;
+    font-weight: 700;
+    color: #51afef;
+}
+
+volume-progress {
+    height: 8px;
+    width: 150px;
+    border-radius: 4px;
+    background-color: rgba(80, 80, 80, 0.5);
+    margin-top: 8px;
+}
+
+volume-progress fill {
+    border-radius: 4px;
+    background: linear-gradient(to right, #51afef, #85dc8a);
+}
+
+volume-muted {
+    opacity: 0.7;
+}
+
+/* Brightness OSD specific */
+brightness-osd {
+    spacing: 8px;
+}
+
+brightness-icon {
+    min-width: 32px;
+    min-height: 32px;
+    icon-size: 32px;
+}
+
+brightness-label {
+    font-size: 20px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+brightness-percentage {
+    font-size: 32px;
+    font-weight: 700;
+    color: #f4c977;
+}
+
+brightness-progress {
+    height: 8px;
+    width: 150px;
+    border-radius: 4px;
+    background-color: rgba(80, 80, 80, 0.5);
+    margin-top: 8px;
+}
+
+brightness-progress fill {
+    border-radius: 4px;
+    background: linear-gradient(to right, #f4c977, #ff9e64);
+}
+
+/* Caps Lock OSD */
+capslock-osd {
+    spacing: 12px;
+}
+
+capslock-icon {
+    min-width: 36px;
+    min-height: 36px;
+    icon-size: 36px;
+}
+
+capslock-label {
+    font-size: 24px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+/* Playback OSD */
+playback-osd {
+    spacing: 12px;
+}
+
+playback-icon {
+    min-width: 36px;
+    min-height: 36px;
+    icon-size: 36px;
+}
+
+playback-label {
+    font-size: 20px;
+    font-weight: 500;
+    color: #ffffff;
+}
+
+/* Muted state - more visible */
+.muted {
+    color: #ff6c6b !important;
+}
+
+/* Critical/warning states */
+.warning {
+    border: 1px solid #ff9e64;
+    background-color: rgba(255, 158, 100, 0.15);
+}
+
+.critical {
+    border: 1px solid #ff6c6b;
+    background-color: rgba(255, 108, 107, 0.15);
+}
+
+

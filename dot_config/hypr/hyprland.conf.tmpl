@@ -56,6 +56,9 @@ exec = ~/.config/hypr/setup_workspaces.sh
 
 # Workspace display names (persistent workspaces keep their names across empty/refill)
 exec-once = hyprctl dispatch renameworkspace 1 "1: Comms"
+
+# Start swayosd-server for on-screen notifications (volume, brightness, etc.)
+exec-once = swayosd-server
 exec-once = hyprctl dispatch renameworkspace 2 "2: Extra"
 exec-once = hyprctl dispatch renameworkspace 3 "3: Browser"
 exec-once = hyprctl dispatch renameworkspace 4 "4: Editing"
@@ -327,12 +330,15 @@ bind = SHIFT, Print, exec, grim -g "$(slurp)" ~/Pictures/$(date +%F-%H%M%S).png
 bind = $mainMod, Print, exec, grim ~/Pictures/$(date +%F-%H%M%S).png
 
 # Laptop multimedia keys for volume and LCD brightness
-bindel = ,XF86AudioRaiseVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+
-bindel = ,XF86AudioLowerVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
-bindel = ,XF86AudioMute, exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
-bindel = ,XF86AudioMicMute, exec, wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
-bindel = ,XF86MonBrightnessUp, exec, brightnessctl s 10%+
-bindel = ,XF86MonBrightnessDown, exec, brightnessctl s 10%-
+# Using swayosd for nice on-screen notifications
+# Volume controls - show OSD on focused monitor
+bindel = ,XF86AudioRaiseVolume, exec, swayosd-client --monitor "$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')" --output-volume +5
+bindel = ,XF86AudioLowerVolume, exec, swayosd-client --monitor "$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')" --output-volume -5
+bindel = ,XF86AudioMute, exec, swayosd-client --monitor "$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')" --output-volume mute-toggle
+bindel = ,XF86AudioMicMute, exec, swayosd-client --monitor "$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')" --input-volume mute-toggle
+# Brightness controls - show OSD on focused monitor
+bindel = ,XF86MonBrightnessUp, exec, swayosd-client --monitor "$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')" --brightness +10
+bindel = ,XF86MonBrightnessDown, exec, swayosd-client --monitor "$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')" --brightness -10
 
 # Requires playerctl
 bindl = , XF86AudioNext, exec, playerctl next
