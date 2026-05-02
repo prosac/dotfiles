@@ -51,6 +51,9 @@ $menu = walker
 # exec-once = nm-applet &
 # exec-once = waybar & hyprpaper & firefox
 
+# Setup workspaces dynamically based on connected monitors
+exec = ~/.config/hypr/setup_workspaces.sh
+
 # Workspace display names (persistent workspaces keep their names across empty/refill)
 exec-once = hyprctl dispatch renameworkspace 1 "1: Comms"
 exec-once = hyprctl dispatch renameworkspace 2 "2: Extra"
@@ -344,32 +347,8 @@ bindl = , XF86AudioPrev, exec, playerctl previous
 # See https://wiki.hyprland.org/Configuring/Window-Rules/ for more
 # See https://wiki.hyprland.org/Configuring/Workspace-Rules/ for workspace rules
 
-# Workspace rules (persistent keeps workspace alive when empty, preserving its name)
-# Laptops: workspaces 1-2 on internal display, rest on external.
-# Desktop: all workspaces on external display.
-{{ if eq .machineClass "laptop" -}}
-workspace = 1, monitor:eDP-1, persistent:true
-workspace = 2, monitor:eDP-1, persistent:true
-workspace = 3, monitor:HDMI-A-1, default:true, persistent:true
-workspace = 4, monitor:HDMI-A-1, persistent:true
-workspace = 5, monitor:HDMI-A-1, persistent:true
-workspace = 6, monitor:HDMI-A-1, persistent:true
-workspace = 7, monitor:HDMI-A-1
-workspace = 8, monitor:HDMI-A-1
-workspace = 9, monitor:HDMI-A-1
-workspace = 10, monitor:HDMI-A-1
-{{ else -}}
-workspace = 1, monitor:HDMI-A-1, persistent:true
-workspace = 2, monitor:HDMI-A-1, persistent:true
-workspace = 3, monitor:HDMI-A-1, default:true, persistent:true
-workspace = 4, monitor:HDMI-A-1, persistent:true
-workspace = 5, monitor:HDMI-A-1, persistent:true
-workspace = 6, monitor:HDMI-A-1, persistent:true
-workspace = 7, monitor:HDMI-A-1
-workspace = 8, monitor:HDMI-A-1
-workspace = 9, monitor:HDMI-A-1
-workspace = 10, monitor:HDMI-A-1
-{{ end -}}
+# Workspace rules - configured dynamically via setup_workspaces.sh
+# based on connected monitors (HDMI-A-1 presence)
 
 # Example windowrule v1
 # windowrule = float, ^(kitty)$
