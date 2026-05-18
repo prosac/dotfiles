@@ -10,12 +10,14 @@
         "hyprland/submap"
     ],
     "modules-center": [
-        "hyprland/window"
+        "hyprland/window",
+        "custom/hidden-windows"
     ],
     "modules-right": [
         "custom/gradia",
         "custom/color-scheme",
         "custom/displays",
+        "backlight",
         "wireplumber",
         "bluetooth",
         "network",
@@ -39,7 +41,9 @@
     },
 
     "hyprland/workspaces": {
-        "format": "{name}",
+        "format": "{name} {windows}",
+        "format-window-separator": "",
+        "window-rewrite-default": "·",
         "on-click": "activate"
     },
 
@@ -47,10 +51,25 @@
         "format": "[{}]"
     },
 
+    "custom/hidden-windows": {
+        "exec": "{{ .chezmoi.homeDir }}/.local/bin/waybar-hidden-windows",
+        "return-type": "json",
+        "interval": "once"
+    },
+
     "hyprland/window": {
         "format": "{title}",
         "max-length": 80,
         "separate-outputs": true
+    },
+
+    "backlight": {
+        "device": "amdgpu_bl1",
+        "format": "{percent}%",
+        "tooltip-format": "brightness {percent}%",
+        "scroll-step": 5,
+        "on-scroll-up": "brightnessctl set +5%",
+        "on-scroll-down": "brightnessctl set 5%-"
     },
 
     "custom/displays": {

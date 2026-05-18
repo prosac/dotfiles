@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+# Waybar custom module: count of windows hidden behind a maximized window
+# on the active workspace. Stays running, emits JSON on Hyprland IPC events.
+
+import json, os, socket, subprocess, sys
+from pathlib import Path
+
+
+def query(args):
+    return json.loads(subprocess.check_output(['hyprctl', *args, '-j']))
+
+
+def emit():
+    try:
+        clients   = query(['clients'])
+        active_ws = query(['activeworkspace'])
+        ws_id     = active_ws['id']
+
+        ws_wins   = [c for c in clients if c['workspace']['id'] == ws_id and not c['hidden']]
+        maximized = [c for c in ws_wins if c['fullscreen'] != 0]
+
+        if maximized and len(ws_wins) > 1:
+            hidden = len(ws_wins) - 1
+            titles = '\n'.join(c['title'][:60] for c in ws_wins if c not in maximized)
+            out = {'text': f'+{hidden}', 'tooltip': f'{hidden} window(s) behind:\n{titles}', 'class': 'has-hidden'}
+        else:
+            out = {'text': '', 'tooltip': '', 'class': ''}
+    except Exception as e:
+        out = {'text': '', 'tooltip': str(e), 'class': 'error'}
+
+    print(json.dumps(out), flush=True)
+
+
+TRIGGER_EVENTS = {b'activewindow', b'workspace', b'openwindow', b'closewindow', b'movewindow', b'fullscreen'}
+
+sig = os.environ.get('HYPRLAND_INSTANCE_SIGNATURE', '')
+if not sig:
+    # fall back: find the socket
+    candidates = list(Path('/run/user').glob(f'{os.getuid()}/hypr/*/.socket2.sock'))
+    sock_path  = str(candidates[0]) if candidates else ''
+else:
+    sock_path = f'/run/user/{os.getuid()}/hypr/{sig}/.socket2.sock'
+
+emit()
+
+with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+    s.connect(sock_path)
+    buf = b''
+    while True:
+        chunk = s.recv(4096)
+        if not chunk:
+            break
+        buf += chunk
+        while b'\n' in buf:
+            line, buf = buf.split(b'\n', 1)
+            event = line.split(b'>>', 1)[0]
+            if event in TRIGGER_EVENTS:
+                emit()
