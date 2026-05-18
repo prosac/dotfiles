@@ -15,6 +15,10 @@ case "$1/$2" in
     # Kill WebKit renderer/network processes (GNOME Web, Evolution, some Flatpaks)
     pkill -f "WebKitNetworkProcess" || true
     pkill -f "WebKitWebProcess" || true
+    # Force Hyprland to repaint all windows after GPU processes respawn
+    sleep 1
+    HYPRLAND_INSTANCE_SIGNATURE=$(ls /tmp/hypr/ 2>/dev/null | head -1) \
+      hyprctl dispatch forcerendererreload 2>/dev/null || true
     ;;
 esac
 EOF
