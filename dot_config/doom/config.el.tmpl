@@ -29,10 +29,14 @@
 ;; refresh your font settings. If Emacs still can't find your font, it likely
 ;; wasn't installed correctly. Font issues are rarely Doom issues!
 
-;; There are two ways to load a theme. Both assume the theme is installed and
-;; available. You can either set `doom-theme' or manually load a theme with the
-;; `load-theme' function. This is the default:
+;; Theme: follow the system color-scheme (gsettings) via auto-dark.
+;; doom-theme is the initial fallback; auto-dark replaces it at load time
+;; based on `org.gnome.desktop.interface color-scheme`.
 (setq doom-theme 'doom-one)
+(use-package! auto-dark
+  :custom
+  (auto-dark-themes '((doom-one) (doom-one-light)))
+  :hook (after-init . auto-dark-mode))
 
 ;; This determines the style of line numbers in effect. If set to `nil', line
 ;; numbers are disabled. For relative line numbers, set this to `relative'.

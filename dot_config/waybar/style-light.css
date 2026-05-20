@@ -1,7 +1,9 @@
-/* Waybar — minimal, 90s-Unix workstation palette */
+/* Waybar — light variant, mirrors style-dark.css with an inverted-paper palette */
 
 * {
-    font-family: "JetBrains Mono", "Iosevka", "DejaVu Sans Mono", monospace;
+    /* Hack Nerd Font supplies app glyphs (chromium, emacs, terminal, moon/sun, etc.).
+       Listed first so its glyph ranges resolve before generic monospace fallbacks. */
+    font-family: "Hack Nerd Font", "JetBrains Mono", "Iosevka", "DejaVu Sans Mono", monospace;
     font-size: 12px;
     min-height: 0;
     border: none;
@@ -9,9 +11,9 @@
 }
 
 window#waybar {
-    background: rgba(20, 22, 26, 0.92);
-    color: #c0c4cc;
-    border-bottom: 1px solid rgba(92, 144, 144, 0.35);
+    background: rgba(244, 240, 232, 0.94);
+    color: #2c3038;
+    border-bottom: 1px solid rgba(58, 112, 112, 0.30);
 }
 
 /* Module spacing */
@@ -33,65 +35,65 @@ window#waybar {
 #backlight {
     padding: 0 8px;
     background: transparent;
-    color: #c0c4cc;
+    color: #2c3038;
 }
 
 #bluetooth.connected {
-    color: #7a8aa6;
+    color: #4a5a7b;
 }
 
-#custom-color-scheme.dark  { color: #7a8aa6; }
-#custom-color-scheme.light { color: #c7a87f; }
+#custom-color-scheme.dark  { color: #4a5a7b; }
+#custom-color-scheme.light { color: #8a6b3c; }
 
 /* Workspaces: active = steel-blue, urgent = dusty magenta */
 #workspaces button {
     padding: 0 6px;
-    color: #6a6e78;
+    color: #9a9ea8;
     background: transparent;
 }
 
 #workspaces button:hover {
     background: transparent;
-    color: #c0c4cc;
+    color: #2c3038;
     box-shadow: none;
     text-shadow: none;
 }
 
 #workspaces button.active {
-    color: #6b7a99;
+    color: #3a4a6b;
 }
 
 #workspaces button.urgent {
-    color: #c77fa5;
+    color: #a04060;
 }
 
 /* Submap indicator (resize mode, etc.) — desaturated teal */
 #submap {
-    color: #5c9090;
+    color: #2a6060;
     font-style: italic;
 }
 
 /* Active window title — dimmer so it recedes */
 #window {
-    color: #8a8e98;
+    color: #6a6e78;
 }
 
 /* Battery states */
 #battery.warning {
-    color: #c7a87f;
+    color: #8a6b3c;
 }
 
 #battery.critical {
-    color: #c77f7f;
+    color: #a04040;
 }
 
 #battery.charging {
-    color: #5c9090;
+    color: #2a6060;
 }
 
 /* Clock: accent color */
 #clock {
-    color: #7a8aa6;
+    color: #4a5a7b;
 }
 
 /* Tray icons inherit app colors — keep spacing airy */

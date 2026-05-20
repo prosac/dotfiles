@@ -55,3 +55,7 @@
 (unpin! org-roam)
 (package! org-roam-ui)
 (package! lsp-pyright)
+
+;; auto-dark watches gsettings org.gnome.desktop.interface color-scheme and
+;; switches the Doom theme between dark and light to match the system.
+(package! auto-dark)

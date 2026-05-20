@@ -50,7 +50,9 @@
 
 gtk-single-instance = false
 
-theme = Doom One
+# Auto-follow the GNOME color-scheme. Ghostty watches gsettings and
+# re-themes new windows; existing windows keep their current theme until reloaded.
+theme = light:Atom One Light,dark:Doom One
 
 font-family = "JetBrains Mono"
 font-size = 12
