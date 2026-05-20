@@ -19,6 +19,13 @@
 
 set -euo pipefail
 
+{{ if not .mailSetup -}}
+# Mail stack opt-out for this machine (`mailSetup = false` in chezmoi.toml).
+# No-op; the rendered output stays stable across reapply so the hash-trigger
+# doesn't keep firing.
+exit 0
+{{- end }}
+
 ENV_DIR="$HOME/.local/share/uv-envs/lieer"
 BIN_LINK="$HOME/.local/bin/gmi"
 

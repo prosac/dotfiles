@@ -14,7 +14,7 @@ Then add `~/bin` to `$PATH` if it isn't already (it is, after Step 1 deploys `.z
 chezmoi init --apply git@github.com:prosac/dotfiles.git
 ```
 
-`init` prompts for `name`, `email`, and `machineClass` (laptop/desktop). On `apply`, the `run_onchange_after_install-packages.sh.tmpl` script runs (see Step 4 below) — interactive `sudo` will be required.
+`init` prompts for `name`, `email`, `machineClass` (laptop/desktop), `passwordManager` (`1password`/`bitwarden`/`none` — only `1password` enables SSH-signed commits in `.gitconfig`), and `mailSetup` (bool, default `false` — set `true` to deploy the notmuch + lieer Gmail stack: scripts, systemd timer, Doom `:email notmuch`, lieer venv, mail dnf packages). On `apply`, the `run_onchange_after_install-packages.sh.tmpl` script runs (see Step 4 below) — interactive `sudo` will be required.
 
 ## 1. Install pre-commit hook in the cloned source
 

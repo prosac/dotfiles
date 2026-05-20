@@ -182,7 +182,11 @@
 
        :email
        ;;(mu4e +org +gmail)
+{{- if .mailSetup }}
        notmuch
+{{- else }}
+       ;;notmuch          ; gated off — `mailSetup = false` in chezmoi.toml
+{{- end }}
        ;;(wanderlust +gmail)
 
        :app

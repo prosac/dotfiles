@@ -6,9 +6,11 @@
 {{- $email := promptStringOnce . "email" "Git email" -}}
 {{- $machineClass := promptChoiceOnce . "machineClass" "Machine class" (list "laptop" "desktop") -}}
 {{- $passwordManager := promptChoiceOnce . "passwordManager" "Password manager" (list "1password" "bitwarden" "none") -}}
+{{- $mailSetup := promptBoolOnce . "mailSetup" "Deploy notmuch + lieer Gmail setup on this machine" false -}}
 
 [data]
 name = {{ $name | quote }}
 email = {{ $email | quote }}
 machineClass = {{ $machineClass | quote }}
 passwordManager = {{ $passwordManager | quote }}
+mailSetup = {{ $mailSetup }}
