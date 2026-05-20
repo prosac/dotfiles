@@ -185,16 +185,16 @@
         org-roam-ui-update-on-save t
         org-roam-ui-open-on-start t))
 
+(setq user-full-name    "{{ .name }}"
+      user-mail-address "{{ .email }}")
+
+{{ if .mailSetup -}}
 ;; ----------------------------------------------------------------------------
 ;; Email: notmuch + lieer (gmailieer fork) for Gmail.
 ;; Sync via the chezmoi-managed `mail-sync` wrapper, which pulls OAuth
 ;; credentials from 1Password into tmpfs for the duration of each run.
-;; Identity values are injected from chezmoi data (the source is on a public
-;; repo — see [[feedback-chezmoi-public-repo]]).
+;; Gated by the `mailSetup` chezmoi prompt — see .chezmoi.toml.tmpl.
 ;; ----------------------------------------------------------------------------
-
-(setq user-full-name    "{{ .name }}"
-      user-mail-address "{{ .email }}")
 
 (after! notmuch
   ;; Maildir on disk (lieer manages cur/new/tmp + history_id state here).
@@ -222,3 +222,4 @@
           (:name "all mail"  :query "*"                            :key "a")
           (:name "today"     :query "date:today"                   :key "t")
           (:name "this week" :query "date:7d.."                    :key "w"))))
+{{- end }}

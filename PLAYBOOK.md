@@ -68,7 +68,7 @@ mise run ch:hooks                 # install pre-commit hook in the cloned source
 
 Then follow `bootstrap/SETUP.md` for the per-machine privileged setup (sudoers + snapshot timer + enabling user services).
 
-`chezmoi init` prompts for any personal values (Stage 3: name, email, machine-class).
+`chezmoi init` prompts for any personal values (name, email, machine-class, password-manager, mail-setup).
 
 ### Sync (multi-machine, same user)
 
@@ -126,6 +126,7 @@ Grows as workflows land.
 - **No hardcoded home paths.** Never `/home/<user>` in any committed file.
 - **Per-machine files** go into `.chezmoiignore` (e.g. `monitors.conf`, `workspaces.conf` — managed by nwg-displays per host; `.config/systemd/user/*.wants` — systemd's enable state).
 - **Identity** (name, email) comes from `chezmoi init` prompts, stored in local `~/.config/chezmoi/chezmoi.toml` (never committed). *Stage 3.*
+- **Per-machine opt-ins** also live in those prompts and gate optional stacks. Today: `passwordManager` (`1password`/`bitwarden`/`none`) — only `1password` enables SSH-signed commits in `.gitconfig`; `mailSetup` (bool, default `false`) — gates the notmuch + lieer Gmail stack (Doom `:email notmuch`, `.notmuch-config`, `mail-sync` scripts, systemd timer, lieer venv installer, mail dnf packages). Re-prompt by deleting the relevant line from `~/.config/chezmoi/chezmoi.toml` and re-running `chezmoi init`.
 - **Repo-only files** (README.md, PLAYBOOK.md, bootstrap/) live at source root and are listed in `.chezmoiignore` so they aren't applied to `~`.
 - **One commit ≈ one logical change.** Don't mix drift-capture and feature additions.
 

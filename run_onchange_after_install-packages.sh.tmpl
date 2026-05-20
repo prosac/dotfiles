@@ -39,6 +39,11 @@ packages=(
   {{ . | quote }}
 {{- end }}
 {{- end }}
+{{- if .mailSetup }}
+{{- range .packages.dnfMail }}
+  {{ . | quote }}
+{{- end }}
+{{- end }}
 )
 sudo dnf -y install "${packages[@]}"
 

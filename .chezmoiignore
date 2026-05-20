@@ -8,3 +8,16 @@ bootstrap
 
 # systemd user manager's enable/start state (symlinks, per-machine).
 .config/systemd/user/*.wants
+
+{{- /* Mail stack (notmuch + lieer for Gmail) is opt-in per machine.
+       Toggle via the `mailSetup` prompt in .chezmoi.toml.tmpl. The Doom
+       :email module + config.el notmuch block are gated inline in
+       init.el.tmpl / config.el.tmpl, so those files themselves stay
+       managed regardless. */}}
+{{- if not .mailSetup }}
+.notmuch-config
+.local/bin/mail-sync
+.local/bin/mail-creds-bootstrap
+.config/systemd/user/mail-sync.service
+.config/systemd/user/mail-sync.timer
+{{- end }}
