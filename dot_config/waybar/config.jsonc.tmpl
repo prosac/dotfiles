@@ -41,9 +41,32 @@
     },
 
     "hyprland/workspaces": {
+        // Nerd Font glyphs use JSON \uXXXX escapes so the bytes survive
+        // tooling that strips raw PUA characters.
+        //    fa-chrome      fa-firefox     cust-emacs
+        //    fa-terminal    folder-open    fa-folder
+        //    sticky-note    slack          mdi-discord
+        //    fa-envelope
         "format": "{name} {windows}",
-        "format-window-separator": "",
+        "format-window-separator": " ",
         "window-rewrite-default": "·",
+        "window-rewrite": {
+            "class<chromium-browser>": "",
+            "class<Chromium-browser>": "",
+            "class<google-chrome>": "",
+            "class<Google-chrome>": "",
+            "class<firefox>": "",
+            "class<[Ee]macs>": "",
+            "class<com.mitchellh.ghostty>": "",
+            "class<ghostty>": "",
+            "class<org.kde.dolphin>": "",
+            "class<io.gitlab.ilshat_apps.manuscript>": "",
+            "class<org.gnome.Nautilus>": "",
+            "class<Slack>": "",
+            "class<discord>": "",
+            "class<org.thunderbird.Thunderbird>": "",
+            "class<thunderbird>": ""
+        },
         "on-click": "activate"
     },
 
@@ -73,8 +96,9 @@
     },
 
     "custom/displays": {
-        "format": "displays",
-        "tooltip": false,
+        "format": "",
+        "tooltip": true,
+        "tooltip-format": "configure displays (nwg-displays)",
         "on-click": "nwg-displays"
     },
 
@@ -97,10 +121,12 @@
     },
 
     "network": {
-        "format-wifi": "{essid} {signalStrength}%",
-        "format-ethernet": "{ifname}",
-        "format-disconnected": "offline",
-        "tooltip-format": "{ifname} · {ipaddr}"
+        "format-wifi": "",
+        "format-ethernet": "",
+        "format-disconnected": "",
+        "tooltip-format-wifi": "{essid} · {signalStrength}%\n{ifname} · {ipaddr}",
+        "tooltip-format-ethernet": "{ifname} · {ipaddr}",
+        "tooltip-format-disconnected": "network offline"
     },
 
     "battery": {
@@ -114,7 +140,7 @@
     },
 
     "clock": {
-        "format": "{:%a %Y-%m-%d  %H:%M}",
+        "format": "{:%Y-%m-%d  %H:%M}",
         "tooltip-format": "<tt>{calendar}</tt>"
     },
 

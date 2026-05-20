@@ -51,20 +51,16 @@ $menu = walker
 # exec-once = nm-applet &
 # exec-once = waybar & hyprpaper & firefox
 
-# Setup workspaces dynamically based on connected monitors
+# Setup persistent workspaces, monitor pinning, and display names.
+# (setup_workspaces.sh handles renames internally — see comments there.)
 exec = ~/.config/hypr/setup_workspaces.sh
-
-# Workspace display names (persistent workspaces keep their names across empty/refill)
-exec-once = hyprctl dispatch renameworkspace 1 "1: Comms"
 
 # Start swayosd-server for on-screen notifications (volume, brightness, etc.)
 exec-once = swayosd-server
 
-exec-once = hyprctl dispatch renameworkspace 2 "2: Extra"
-exec-once = hyprctl dispatch renameworkspace 3 "3: Browser"
-exec-once = hyprctl dispatch renameworkspace 4 "4: Editing"
-exec-once = hyprctl dispatch renameworkspace 5 "5: Terminal"
-exec-once = hyprctl dispatch renameworkspace 6 "6: Extra 2"
+# Apply current color-scheme to Hyprland borders + waybar CSS at startup
+# so the visual state matches gsettings on every login.
+exec-once = ~/.local/bin/toggle-color-scheme --apply
 
 
 
