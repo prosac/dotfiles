@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# mail-creds-bootstrap — one-shot helper to migrate the credentials file
+# that `gmi auth` writes to disk into 1Password, then shred the local copy.
+#
+# Run this exactly once after the interactive OAuth flow:
+#
+#   1. gmi init <email>              # creates ~/.local/share/mail/gmail/
+#   2. cd ~/.local/share/mail/gmail
+#   3. gmi auth                       # opens browser → FIDO2-backed Google sign-in
+#      ^ writes <maildir>/.credentials.gmailieer.json in plaintext on disk
+#   4. mail-creds-bootstrap           # this script: → 1Password, shred local
+#   5. mail-sync                       # ongoing path: tmpfs only
+#
+# Idempotent-ish: if the 1Password item already exists, it gets updated.
+# Refuses to run if no local credentials file is present (you'd be storing
+# nothing).
+
+set -euo pipefail
+
+OP_VAULT="${OP_VAULT_MAIL:-Employee}"
+OP_ITEM="${OP_ITEM_MAIL:-lieer-gmail-creds}"
+MAILDIR="${LIEER_MAILDIR:-$HOME/.local/share/mail/gmail}"
+CRED_FILE="$MAILDIR/.credentials.gmailieer.json"
+
+log() { printf '[mail-creds-bootstrap] %s\n' "$*" >&2; }
+die() { log "ERROR: $*"; exit 1; }
+
+command -v op >/dev/null || die "1Password CLI (op) not on PATH"
+command -v jq >/dev/null || die "jq not on PATH"
+
+[ -f "$CRED_FILE" ] || die "no credentials file at $CRED_FILE — did you run 'gmi auth'?"
+# Guard against a leftover symlink from a previous mail-sync run.
+[ -L "$CRED_FILE" ] && die "$CRED_FILE is a symlink — looks like mail-sync state, not a fresh 'gmi auth' output"
+
+jq -e '.refresh_token' "$CRED_FILE" >/dev/null \
+  || die "$CRED_FILE has no refresh_token — re-run 'gmi auth' with --scope=modify (or similar)"
+
+# Does the item already exist?
+if op item get --vault "$OP_VAULT" "$OP_ITEM" >/dev/null 2>&1; then
+  log "1Password item '$OP_ITEM' exists in vault '$OP_VAULT' — updating..."
+  op document edit --vault "$OP_VAULT" "$OP_ITEM" "$CRED_FILE" >/dev/null
+else
+  log "creating 1Password document '$OP_ITEM' in vault '$OP_VAULT'..."
+  op document create "$CRED_FILE" --vault "$OP_VAULT" --title "$OP_ITEM" >/dev/null
+fi
+
+log "shredding local credentials file..."
+if command -v shred >/dev/null; then
+  shred -u "$CRED_FILE"
+else
+  rm -f "$CRED_FILE"
+fi
+
+log "done. Run 'mail-sync' from now on — credentials live only in 1Password."

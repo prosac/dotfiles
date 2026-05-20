@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Install lieer (the modern fork of gmailieer) into a uv-managed venv that
+# inherits Fedora's python3-notmuch2 via --system-site-packages.
+#
+# Why not `uv tool install lieer`?
+#   The PyPI `notmuch2` package (a transitive dep of lieer) has a broken sdist
+#   that fails to build (missing version.txt). Fedora ships a working binding
+#   as the `python3-notmuch2` rpm.
+#
+# Why --no-deps + explicit dep list?
+#   `--system-site-packages` exposes python3-notmuch2 at runtime, but uv's
+#   resolver doesn't look beyond the venv's own site-packages, so it still
+#   tries to install notmuch2 from PyPI and fails. --no-deps avoids that;
+#   we install lieer's other (working) deps explicitly. notmuch2 is then
+#   resolved at import time from /usr/lib64/python3.14/site-packages/.
+#
+# Rerun trigger: this file's hash. Bump the SENTINEL line to force a reinstall.
+# SENTINEL: 2026-05-20-v2
+
+set -euo pipefail
+
+ENV_DIR="$HOME/.local/share/uv-envs/lieer"
+BIN_LINK="$HOME/.local/bin/gmi"
+
+# lieer install_requires, minus notmuch2 (which lives in system-site-packages).
+# Source: https://github.com/gauteh/lieer/blob/master/setup.py
+LIEER_DEPS=(
+  google_auth_oauthlib
+  google-api-python-client
+  tqdm
+)
+
+if ! command -v uv >/dev/null; then
+  echo "install-lieer: uv not on PATH yet — skipping (will reapply once mise/uv is set up)." >&2
+  exit 0
+fi
+
+if ! /usr/bin/python3 -c "import notmuch2" 2>/dev/null; then
+  echo "install-lieer: system python3-notmuch2 not importable — run 'chezmoi apply' after dnf has installed python3-notmuch2." >&2
+  exit 0
+fi
+
+if [ -x "$ENV_DIR/bin/gmi" ] && [ -L "$BIN_LINK" ] && [ "$(readlink -f "$BIN_LINK")" = "$ENV_DIR/bin/gmi" ]; then
+  echo "install-lieer: $BIN_LINK already points at $ENV_DIR/bin/gmi — skipping."
+  exit 0
+fi
+
+mkdir -p "$(dirname "$ENV_DIR")" "$(dirname "$BIN_LINK")"
+
+# A previous failed attempt may have left a partial venv with no gmi. Nuke it
+# so the build is reproducible from scratch.
+if [ -d "$ENV_DIR" ] && [ ! -x "$ENV_DIR/bin/gmi" ]; then
+  echo "==> Removing incomplete venv at $ENV_DIR..."
+  rm -rf "$ENV_DIR"
+fi
+
+echo "==> Creating uv venv at $ENV_DIR (--system-site-packages)..."
+uv venv --python /usr/bin/python3 --system-site-packages --seed "$ENV_DIR"
+
+echo "==> Installing lieer (no deps) + its deps explicitly (notmuch2 stays system-site)..."
+uv pip install --python "$ENV_DIR/bin/python" --no-deps lieer
+uv pip install --python "$ENV_DIR/bin/python" "${LIEER_DEPS[@]}"
+
+echo "==> Sanity check: notmuch2 still importable from the venv..."
+"$ENV_DIR/bin/python" -c "import notmuch2; print('notmuch2 at:', notmuch2.__file__)"
+
+echo "==> Symlinking $ENV_DIR/bin/gmi -> $BIN_LINK"
+ln -sf "$ENV_DIR/bin/gmi" "$BIN_LINK"
+
+# gmi has no --version flag; --help is the cheapest "binary works" probe.
+echo "install-lieer: done. 'gmi --help' first line:"
+"$BIN_LINK" --help 2>&1 | head -1 || true

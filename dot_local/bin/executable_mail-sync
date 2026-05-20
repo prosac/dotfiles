@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# mail-sync — sync Gmail via lieer, materializing OAuth credentials from
+# 1Password into tmpfs only for the duration of the run.
+#
+# Flow per invocation:
+#   1. Fetch the credentials JSON from 1Password (`op document get`) into
+#      $XDG_RUNTIME_DIR/mail-sync.<pid>/credentials.json. That directory is
+#      tmpfs on a systemd-managed system, so the secret never hits disk.
+#   2. Symlink <maildir>/.credentials.gmailieer.json -> that tmpfs file.
+#      lieer reads through the symlink; nothing persists in the maildir.
+#   3. Run `gmi sync` (push queued changes, pull new mail, apply Gmail labels
+#      as notmuch tags).
+#   4. If the *refresh_token* changed (rare — Google's desktop OAuth tokens
+#      almost never rotate), push the updated JSON back to 1Password.
+#   5. Trap removes the symlink + tmpfs dir on any exit path.
+#
+# Bootstrap is one-shot via `mail-creds-bootstrap` (see that script).
+#
+# Env knobs (defaults in the body):
+#   OP_VAULT_MAIL   1Password vault holding the lieer creds document
+#   OP_ITEM_MAIL    Item title within that vault
+#   LIEER_MAILDIR   Path to the lieer-managed maildir
+
+set -euo pipefail
+
+OP_VAULT="${OP_VAULT_MAIL:-Employee}"
+OP_ITEM="${OP_ITEM_MAIL:-lieer-gmail-creds}"
+MAILDIR="${LIEER_MAILDIR:-$HOME/.local/share/mail/gmail}"
+CRED_LINK="$MAILDIR/.credentials.gmailieer.json"
+
+log() { printf '[mail-sync] %s\n' "$*" >&2; }
+die() { log "ERROR: $*"; exit 1; }
+
+[ -d "$MAILDIR" ] || die "maildir $MAILDIR does not exist — run 'gmi init <email>' first"
+[ -f "$MAILDIR/.gmailieer.json" ] || die "$MAILDIR is not a lieer maildir (missing .gmailieer.json)"
+command -v op  >/dev/null || die "1Password CLI (op) not on PATH"
+command -v gmi >/dev/null || die "gmi (lieer) not on PATH — chezmoi apply hasn't installed it yet?"
+command -v jq  >/dev/null || die "jq not on PATH"
+
+# Refuse to overwrite an unexpected real file at the credentials path.
+# A symlink left over from a SIGKILL'd previous run is fine — we'll replace it.
+if [ -e "$CRED_LINK" ] && [ ! -L "$CRED_LINK" ]; then
+  die "stale plaintext at $CRED_LINK — inspect and remove before re-running"
+fi
+
+runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+[ -d "$runtime_dir" ] || die "runtime dir $runtime_dir missing — not on a systemd user session?"
+
+work=$(mktemp -d "$runtime_dir/mail-sync.XXXXXX")
+chmod 700 "$work"
+cred_file="$work/credentials.json"
+
+cleanup() {
+  rm -f "$CRED_LINK"
+  rm -rf "$work"
+}
+trap cleanup EXIT INT TERM
+
+log "fetching credentials from 1Password (vault=$OP_VAULT item=$OP_ITEM)..."
+op document get --vault "$OP_VAULT" "$OP_ITEM" --out-file "$cred_file" >/dev/null
+chmod 600 "$cred_file"
+
+# Capture refresh_token only — Google's lib rewrites the file every run to
+# stash a fresh access_token, but the refresh_token rarely rotates. Pushing
+# every minor change to 1Password every 5 min would be needless churn.
+before_rt=$(jq -r '.refresh_token // empty' "$cred_file")
+[ -n "$before_rt" ] || die "credentials JSON in 1Password has no refresh_token"
+
+# Replace any stale symlink atomically.
+rm -f "$CRED_LINK"
+ln -s "$cred_file" "$CRED_LINK"
+
+log "running gmi sync in $MAILDIR..."
+( cd "$MAILDIR" && gmi sync )
+
+after_rt=$(jq -r '.refresh_token // empty' "$cred_file")
+if [ "$before_rt" != "$after_rt" ]; then
+  log "refresh_token rotated — updating 1Password item..."
+  op document edit --vault "$OP_VAULT" "$OP_ITEM" "$cred_file" >/dev/null
+else
+  log "refresh_token unchanged."
+fi
+
+log "done."

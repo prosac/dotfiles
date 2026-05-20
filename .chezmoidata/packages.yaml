@@ -72,6 +72,18 @@ packages:
     - qalculate-gtk
     - wl-clipboard
 
+    # Mail (notmuch + lieer for Gmail sync).
+    # lieer pulls in `notmuch2` from PyPI, whose sdist is broken on Fedora
+    # (missing version.txt at build time). Fedora ships a working binding as
+    # python3-notmuch2; the run_onchange_after_post-install-lieer.sh hook
+    # creates a uv venv with --system-site-packages so lieer can import it.
+    # gmime30 (gmime 3.x runtime) is pulled in by notmuch automatically.
+    # jq is used by ~/.local/bin/mail-sync to detect refresh-token rotation.
+    - notmuch
+    - python3-notmuch2
+    - w3m
+    - jq
+
   # Fedora 43+ only — installed straight from the walker COPR.
   # elephant-<provider> packages are added by the install script from
   # `elephantProviders` above.
