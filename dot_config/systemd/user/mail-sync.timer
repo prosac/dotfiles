@@ -1,0 +1,14 @@
+[Unit]
+Description=Periodic Gmail sync via lieer
+
+[Timer]
+# Every 5 minutes from boot; first sync ~1 minute after login to avoid
+# fighting the login storm. RandomizedDelaySec spreads multiple hosts' load
+# on the Gmail API if you ever sync from more than one machine.
+OnBootSec=1min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,23 @@
+# notmuch config — driven by lieer, indexed mail under ~/.local/share/mail.
+# Identity templated from chezmoi data (this file is rendered locally; the
+# .tmpl in source ships no personal data — see [[feedback-chezmoi-public-repo]]).
+
+[database]
+path={{ .chezmoi.homeDir }}/.local/share/mail
+mail_root={{ .chezmoi.homeDir }}/.local/share/mail
+
+[user]
+name={{ .name }}
+primary_email={{ .email }}
+
+[new]
+# lieer tags messages itself from Gmail's labels during `gmi pull`; we just
+# tag fresh files with `new` so its post-new pass can find and re-tag them.
+tags=new
+ignore=.gmailieer.json;.credentials.gmailieer.json;.gmailieer.json.bak;.lock
+
+[search]
+exclude_tags=deleted;spam;trash
+
+[maildir]
+synchronize_flags=true
