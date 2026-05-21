@@ -45,11 +45,14 @@ window#waybar {
 #custom-color-scheme.dark  { color: #4a5a7b; }
 #custom-color-scheme.light { color: #8a6b3c; }
 
-/* Workspaces: active = steel-blue, urgent = dusty magenta */
+/* Workspaces: active = steel-blue underline, visible = muted accent,
+   urgent = dusty magenta. With two monitors, one workspace is .active on
+   each, plus the focused one also carries the focused class. */
 #workspaces button {
     padding: 0 6px;
     color: #9a9ea8;
     background: transparent;
+    border-bottom: 2px solid transparent;
 }
 
 #workspaces button:hover {
@@ -59,12 +62,22 @@ window#waybar {
     text-shadow: none;
 }
 
+/* Visible on some monitor (any) — slight darken */
+#workspaces button.visible {
+    color: #5a6478;
+}
+
+/* Active on its monitor — deep steel-blue + underline accent */
 #workspaces button.active {
-    color: #3a4a6b;
+    color: #1a2a4b;
+    background: rgba(58, 74, 107, 0.12);
+    border-bottom: 2px solid #3a4a6b;
+    font-weight: bold;
 }
 
 #workspaces button.urgent {
     color: #a04060;
+    border-bottom: 2px solid #a04060;
 }
 
 /* Submap indicator (resize mode, etc.) — desaturated teal */
