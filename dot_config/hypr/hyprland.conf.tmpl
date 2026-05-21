@@ -55,6 +55,10 @@ $menu = walker
 # (setup_workspaces.sh handles renames internally — see comments there.)
 exec = ~/.config/hypr/setup_workspaces.sh
 
+# Listen for monitor hot-plug events so workspaces re-pin + migrate when
+# HDMI / DP monitors come and go without needing a Hyprland reload.
+exec-once = ~/.config/hypr/monitor_hotplug.sh
+
 # Start swayosd-server for on-screen notifications (volume, brightness, etc.)
 exec-once = swayosd-server
 
