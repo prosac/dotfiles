@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Toggle or report the system color-scheme. Flips, in coordination:
 #   - GNOME gsettings (color-scheme + gtk-theme)  -> chromium + GTK apps
-#   - Hyprland border colors                       -> hyprctl keyword
+#   - Hyprland border + tabbed-group colors        -> hyprctl keyword
 #   - Waybar CSS                                   -> ~/.config/waybar/style.css symlink + SIGUSR2
 #   - Ghostty already auto-follows via `theme = light:X,dark:Y` in its config
 #
@@ -22,17 +22,32 @@ DARK_INACTIVE='rgba(44444488)'
 LIGHT_ACTIVE='rgba(3a4a6bee) rgba(2a6060ee) 45deg'
 LIGHT_INACTIVE='rgba(bbbbbb88)'
 
+# Tabbed-group (groupbar) palettes. Active tab reuses the border gradient;
+# inactive tab is an opaque dim fill; text contrasts the scheme.
+DARK_TAB_ACTIVE="$DARK_ACTIVE"
+DARK_TAB_INACTIVE='rgba(2e3440dd)'
+DARK_TAB_TEXT='rgba(e5e9f0ff)'
+LIGHT_TAB_ACTIVE="$LIGHT_ACTIVE"
+LIGHT_TAB_INACTIVE='rgba(d8dee9dd)'
+LIGHT_TAB_TEXT='rgba(2e3440ff)'
+
 WAYBAR_DIR="$HOME/.config/waybar"
 
 apply_dark() {
     hyprctl keyword general:col.active_border "$DARK_ACTIVE" >/dev/null 2>&1 || true
     hyprctl keyword general:col.inactive_border "$DARK_INACTIVE" >/dev/null 2>&1 || true
+    hyprctl keyword group:groupbar:col.active "$DARK_TAB_ACTIVE" >/dev/null 2>&1 || true
+    hyprctl keyword group:groupbar:col.inactive "$DARK_TAB_INACTIVE" >/dev/null 2>&1 || true
+    hyprctl keyword group:groupbar:text_color "$DARK_TAB_TEXT" >/dev/null 2>&1 || true
     ln -sfn style-dark.css "$WAYBAR_DIR/style.css"
 }
 
 apply_light() {
     hyprctl keyword general:col.active_border "$LIGHT_ACTIVE" >/dev/null 2>&1 || true
     hyprctl keyword general:col.inactive_border "$LIGHT_INACTIVE" >/dev/null 2>&1 || true
+    hyprctl keyword group:groupbar:col.active "$LIGHT_TAB_ACTIVE" >/dev/null 2>&1 || true
+    hyprctl keyword group:groupbar:col.inactive "$LIGHT_TAB_INACTIVE" >/dev/null 2>&1 || true
+    hyprctl keyword group:groupbar:text_color "$LIGHT_TAB_TEXT" >/dev/null 2>&1 || true
     ln -sfn style-light.css "$WAYBAR_DIR/style.css"
 }
 
