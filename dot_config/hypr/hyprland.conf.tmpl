@@ -66,6 +66,14 @@ exec-once = swayosd-server
 # so the visual state matches gsettings on every login.
 exec-once = ~/.local/bin/toggle-color-scheme --apply
 
+# Wallpaper: start the swww daemon and restore the last wallpaper picked in
+# waypaper (Super+W opens the GUI). `swww`/`swww-daemon` are shims in
+# /usr/local/bin pointing at the awww binaries (awww obsoletes swww on Fedora's
+# solopasha COPR). The short sleep lets the daemon's socket come up before
+# waypaper issues `swww img`. See ~/Documents/docs/hyprland-wallpaper-waypaper-setup.md
+exec-once = swww-daemon
+exec-once = sleep 1 && waypaper --restore
+
 
 
 #############################
@@ -128,6 +136,39 @@ decoration {
         passes = 1
 
         vibrancy = 0.1696
+    }
+}
+
+# https://wiki.hyprland.org/Configuring/Variables/#group
+# Tabbed window groups (Super+T). SGI/Sun hard-edge workstation styling:
+# square boxy tabs, steel-blue→teal gradient on the active tab, a crisp 3px
+# indicator line, monospace labels, zero rounding everywhere.
+# col.active / col.inactive / text_color are re-applied per color-scheme by
+# toggle-color-scheme so the tab strip flips with dark/light like the borders.
+group {
+    # Border of the grouped (parent) window — mirrors the general border palette.
+    col.border_active = rgba(6b7a99ee) rgba(5c9090ee) 45deg
+    col.border_inactive = rgba(44444488)
+
+    groupbar {
+        enabled = true
+        font_family = monospace
+        font_size = 10
+        height = 18
+        indicator_height = 3      # crisp accent line under the active tab
+        gradients = true
+        render_titles = true
+        scrolling = true          # scroll over the bar to cycle tabs
+
+        # Hard edges — no rounding, no gaps. Pure boxy workstation look.
+        rounding = 0
+        gradient_rounding = 0
+        gaps_in = 0
+        gaps_out = 0
+
+        text_color = rgba(e5e9f0ff)
+        col.active = rgba(6b7a99ee) rgba(5c9090ee) 45deg
+        col.inactive = rgba(2e3440dd)
     }
 }
 
@@ -242,6 +283,7 @@ bind = $mainMod, Tab, exec, kando -m "Example Menu"
 bind = $mainMod, Q, killactive,
 bind = $mainMod SHIFT, E, exit,
 bind = $mainMod, E, exec, $fileManager
+bind = $mainMod, W, exec, waypaper          # wallpaper picker GUI (swww backend)
 bind = $mainMod, F, fullscreen,
 bind = $mainMod, M, fullscreen, 1
 bind = $mainMod, V, togglefloating,
