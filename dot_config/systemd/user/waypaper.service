@@ -1,0 +1,17 @@
+[Unit]
+Description=Restore last waypaper-selected wallpaper
+PartOf=graphical-session.target
+After=swww.service
+Requires=swww.service
+ConditionEnvironment=XDG_CURRENT_DESKTOP=Hyprland
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# waypaper shells out to `swww img`; ensure the /usr/local/bin shim is on PATH.
+Environment=PATH=/usr/local/bin:/usr/bin
+ExecStart=/usr/bin/waypaper --restore
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target
