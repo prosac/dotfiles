@@ -109,7 +109,8 @@ export N_PREFIX=$HOME/.n
 export PATH=$N_PREFIX/bin:$PATH
 export PATH="$PATH:$HOME/.cargo/bin:$HOME/lab/experiments/flutter/bin"
 export PATH="$PATH":"$HOME/.pub-cache/bin"
-export PATH="$PATH":"$HOME/.local/go/bin"
+export GOPATH="$HOME/.local/go"
+export PATH="$PATH":"$GOPATH/bin"
 
 # pnpm
 export PNPM_HOME="$HOME/.local/share/pnpm"
