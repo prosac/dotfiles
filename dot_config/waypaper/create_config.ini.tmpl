@@ -1,0 +1,24 @@
+# Waypaper settings — seeded ONCE by chezmoi (create_ attribute), then owned by
+# waypaper at runtime. Editing this source will NOT overwrite an existing
+# ~/.config/waypaper/config.ini; delete the target first if you want to re-seed.
+#
+# backend = swww  -> drives `swww`/`swww-daemon`, which are /usr/local/bin shims
+#                    pointing at the awww binaries (awww obsoletes swww on the
+#                    solopasha:hyprland COPR). awww's CLI is swww-compatible.
+# use_xdg_state   -> keeps the per-monitor wallpaper selection in
+#                    ~/.local/state/waypaper/ instead of rewriting this file,
+#                    so the config stays stable and chezmoi-friendly.
+[Settings]
+folder = {{ .chezmoi.homeDir }}/Pictures/wallpapers
+backend = swww
+fill = fill
+sort = name
+color = #ffffff
+number_of_columns = 3
+subfolders = False
+use_xdg_state = True
+swww_transition_type = fade
+swww_transition_step = 90
+swww_transition_angle = 0
+swww_transition_duration = 2
+swww_transition_fps = 60
