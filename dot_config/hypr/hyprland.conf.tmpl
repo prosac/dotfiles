@@ -59,20 +59,20 @@ exec = ~/.config/hypr/setup_workspaces.sh
 # HDMI / DP monitors come and go without needing a Hyprland reload.
 exec-once = ~/.config/hypr/monitor_hotplug.sh
 
-# Start swayosd-server for on-screen notifications (volume, brightness, etc.)
-exec-once = swayosd-server
+# swayosd-server runs as a systemd user service (swayosd.service), bound to
+# graphical-session.target, so it is not started here.
 
 # Apply current color-scheme to Hyprland borders + waybar CSS at startup
 # so the visual state matches gsettings on every login.
 exec-once = ~/.local/bin/toggle-color-scheme --apply
 
-# Wallpaper: start the swww daemon and restore the last wallpaper picked in
-# waypaper (Super+W opens the GUI). `swww`/`swww-daemon` are shims in
-# /usr/local/bin pointing at the awww binaries (awww obsoletes swww on Fedora's
-# solopasha COPR). The short sleep lets the daemon's socket come up before
-# waypaper issues `swww img`. See ~/Documents/docs/hyprland-wallpaper-waypaper-setup.md
-exec-once = swww-daemon
-exec-once = sleep 1 && waypaper --restore
+# Wallpaper: the swww daemon and wallpaper restore run as systemd user services
+# (swww.service + waypaper.service). waypaper.service is ordered After=swww.service,
+# and swww.service only reports active once its socket answers, so the daemon is
+# guaranteed ready before `waypaper --restore` issues `swww img` (no sleep race).
+# Super+W still opens the waypaper GUI. `swww`/`swww-daemon` are /usr/local/bin
+# shims for the awww binaries (awww obsoletes swww on Fedora's solopasha COPR).
+# See ~/Documents/docs/hyprland-wallpaper-waypaper-setup.md
 
 
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=hyprpaper
+Description=SwayOSD on-screen-display server
 PartOf=graphical-session.target
 After=graphical-session.target
 Requisite=graphical-session.target
@@ -7,7 +7,7 @@ ConditionEnvironment=XDG_CURRENT_DESKTOP=Hyprland
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/hyprpaper
+ExecStart=/usr/bin/swayosd-server
 Restart=on-failure
 RestartSec=2
 Slice=session.slice

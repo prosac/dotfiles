@@ -1,0 +1,20 @@
+[Unit]
+Description=swww wallpaper daemon
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+ConditionEnvironment=XDG_CURRENT_DESKTOP=Hyprland
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/swww-daemon
+# Don't report active until the daemon's socket answers, so units ordered
+# After=swww.service (e.g. waypaper.service) get a genuinely ready daemon
+# instead of racing it. Replaces the old `sleep 1` hack in hyprland.conf.
+ExecStartPost=/bin/sh -c 'until /usr/local/bin/swww query >/dev/null 2>&1; do sleep 0.1; done'
+Restart=on-failure
+RestartSec=2
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target
