@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# mail-creds-migrate-to-tpm — one-shot helper to move lieer's OAuth
+# credentials from a 1Password document to a local TPM2-sealed blob.
+#
+# Run once after switching from the 1Password-backed mail-sync to the
+# systemd-creds version:
+#
+#   1. mail-creds-migrate-to-tpm   # pulls from 1Password, seals to TPM
+#   2. mail-sync                    # verify a clean sync works
+#
+# The 1Password item is intentionally left in place as a disaster-recovery
+# snapshot: if the TPM is cleared or this laptop dies, you can re-run this
+# script on another machine instead of re-OAuthing. The snapshot only goes
+# stale if Google rotates the refresh token (rare); see the doc.
+#
+# The plaintext credentials live in tmpfs ($XDG_RUNTIME_DIR) only for the
+# duration of this script, under a trap that removes them on exit. The
+# resulting sealed blob is bound to PCR 7 (Secure Boot policy) on this
+# machine's TPM.
+#
+# Env knobs (defaults in the body):
+#   OP_VAULT_MAIL    1Password vault holding the lieer creds document
+#   OP_ITEM_MAIL     Item title within that vault
+#   LIEER_CRED_FILE  Path to write the TPM2-sealed blob
+
+set -euo pipefail
+
+OP_VAULT="${OP_VAULT_MAIL:-Employee}"
+OP_ITEM="${OP_ITEM_MAIL:-lieer-gmail-creds}"
+CRED_FILE="${LIEER_CRED_FILE:-$HOME/.local/share/mail/lieer-creds.cred}"
+
+log() { printf '[mail-creds-migrate] %s\n' "$*" >&2; }
+die() { log "ERROR: $*"; exit 1; }
+
+command -v op            >/dev/null || die "1Password CLI (op) not on PATH"
+command -v systemd-creds >/dev/null || die "systemd-creds not on PATH"
+command -v jq            >/dev/null || die "jq not on PATH"
+
+if [ -f "$CRED_FILE" ]; then
+  log "WARNING: $CRED_FILE already exists — it will be overwritten on success."
+fi
+
+runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+[ -d "$runtime_dir" ] || die "runtime dir $runtime_dir missing — not on a systemd user session?"
+
+work=$(mktemp -d "$runtime_dir/mail-creds-migrate.XXXXXX")
+chmod 700 "$work"
+plain_file="$work/credentials.json"
+sealed_tmp="$work/lieer-creds.cred"
+
+trap 'rm -rf "$work"' EXIT INT TERM
+
+log "fetching credentials from 1Password (vault=$OP_VAULT item=$OP_ITEM)..."
+op document get --vault "$OP_VAULT" "$OP_ITEM" --out-file "$plain_file" >/dev/null
+chmod 600 "$plain_file"
+
+jq -e '.refresh_token' "$plain_file" >/dev/null \
+  || die "credentials JSON in 1Password has no refresh_token"
+
+log "sealing credentials to TPM (PCR 7)..."
+systemd-creds encrypt --tpm2-pcrs=7 --name=lieer-creds.cred "$plain_file" "$sealed_tmp"
+chmod 600 "$sealed_tmp"
+
+log "smoke-testing round-trip..."
+systemd-creds decrypt "$sealed_tmp" - >/dev/null \
+  || die "sealed blob failed to decrypt — refusing to install it"
+
+mkdir -p "$(dirname "$CRED_FILE")"
+mv -f "$sealed_tmp" "$CRED_FILE"
+log "installed sealed blob at $CRED_FILE"
+
+cat <<EOF >&2
+
+Migration successful. Next steps:
+
+  1. Run 'mail-sync' to verify the unattended path works.
+  2. Watch a few timer cycles ('systemctl --user list-timers mail-sync.timer').
+
+The 1Password item '$OP_ITEM' in vault '$OP_VAULT' is intentionally left as
+a disaster-recovery snapshot. To restore on a new machine or after a TPM
+clear, install the dotfiles, sign in to 'op', and run this script again.
+
+EOF

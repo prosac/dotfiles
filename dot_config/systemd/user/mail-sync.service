@@ -1,13 +1,14 @@
 [Unit]
-Description=Sync Gmail via lieer (notmuch + 1Password-backed OAuth)
+Description=Sync Gmail via lieer (notmuch + TPM2-sealed OAuth)
 Documentation=file://%h/Documents/docs/notmuch-gmailieer-setup.md
 After=graphical-session.target
 
 [Service]
 Type=oneshot
-# 1Password's op CLI talks to the desktop app over DBus for biometric/FIDO
-# unlock; the desktop session must be active. The mail-sync wrapper handles
-# its own tmpfs cleanup via traps.
+# mail-sync unseals the OAuth credentials from a TPM2-bound blob into tmpfs
+# via systemd-creds. No interactive unlock is required and no desktop session
+# dependency exists — the timer can fire entirely unattended. The wrapper
+# handles its own tmpfs cleanup via traps.
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
 ExecStart=%h/.local/bin/mail-sync
 Nice=10
