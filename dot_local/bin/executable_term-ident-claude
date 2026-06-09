@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Claude Code UserPromptSubmit hook: color the terminal by the session's
+FIRST prompt, so several agent sessions in the *same* repo stay distinct.
+
+Reads the hook JSON on stdin ({session_id, prompt, ...}). On the first prompt
+of a session only (tracked by a marker file keyed by session_id) it seeds
+term-ident from the prompt text. Subsequent prompts are no-ops; when Claude
+exits, the next shell prompt restores the project color via the zsh hook.
+"""
+import json
+import os
+import subprocess
+import sys
+
+TERM_IDENT = os.path.expanduser("~/.local/bin/term-ident")
+MARKER_DIR = os.path.join(
+    os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "term-ident"
+)
+
+
+def main() -> int:
+    try:
+        data = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        return 0  # never block prompt submission
+
+    session_id = data.get("session_id") or "unknown"
+    prompt = (data.get("prompt") or "").strip()
+    if not prompt:
+        return 0
+
+    safe_id = "".join(c for c in session_id if c.isalnum() or c in "-_")
+    marker = os.path.join(MARKER_DIR, f"claude-{safe_id}")
+    try:
+        os.makedirs(MARKER_DIR, exist_ok=True)
+        # O_CREAT|O_EXCL → first prompt wins; later prompts find it and bail.
+        os.close(os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+    except FileExistsError:
+        return 0
+    except OSError:
+        return 0
+
+    try:
+        subprocess.run([TERM_IDENT, "seed", prompt], timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
