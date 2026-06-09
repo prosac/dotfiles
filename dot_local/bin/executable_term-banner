@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""Generate (and cache) a faint text banner PNG for use as a ghostty
+`background-image` — a watermark of e.g. the project name behind the terminal.
+
+Prints the cached PNG path (generating it on first use). The text colour is a
+mid-slate that stays legible-but-subtle on both the light and dark themes;
+ghostty's `background-image-opacity` controls how faint it ends up.
+
+Usage: term-banner <text>
+"""
+import os
+import re
+import subprocess
+import sys
+
+from PIL import Image, ImageDraw, ImageFont
+
+CACHE = os.path.expanduser("~/.cache/term-ident/banners")
+TEXT_RGBA = (146, 152, 164, 255)   # slate — reads on both light & dark schemes
+FONT_SIZE = 150                    # native px; shown unscaled (fit=none) as a corner watermark
+PAD = 56                           # transparent margin baked into the PNG = gap from the window edge
+
+
+def find_font() -> str | None:
+    """Prefer JetBrains Mono if present, else whatever ghostty itself falls
+    back to (fc-match monospace) so the banner matches the terminal font."""
+    for query in ("JetBrains Mono", "monospace"):
+        try:
+            p = subprocess.run(["fc-match", "-f", "%{file}", query],
+                               capture_output=True, text=True, timeout=2).stdout.strip()
+            if p and os.path.exists(p):
+                return p
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return None
+
+
+def generate(text: str, path: str) -> None:
+    font_path = find_font()
+    font = ImageFont.truetype(font_path, FONT_SIZE) if font_path else ImageFont.load_default()
+    # canvas hugs the word (+ PAD on every side); shown unscaled in the corner
+    bb = ImageDraw.Draw(Image.new("RGBA", (1, 1))).textbbox((0, 0), text, font=font)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    img = Image.new("RGBA", (tw + 2 * PAD, th + 2 * PAD), (0, 0, 0, 0))
+    ImageDraw.Draw(img).text((PAD - bb[0], PAD - bb[1]), text, font=font, fill=TEXT_RGBA)
+    img.save(path)
+
+
+def main() -> int:
+    if len(sys.argv) < 2 or not sys.argv[1]:
+        print("usage: term-banner <text>", file=sys.stderr)
+        return 2
+    text = sys.argv[1]
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", text) or "banner"
+    os.makedirs(CACHE, exist_ok=True)
+    path = os.path.join(CACHE, f"{safe}.png")
+    if not os.path.exists(path):
+        generate(text, path)
+    print(path)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
