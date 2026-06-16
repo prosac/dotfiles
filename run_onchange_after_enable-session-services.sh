@@ -30,3 +30,6 @@ enable_if_exists() {
 
 enable_if_exists kando.service kando
 enable_if_exists wayland-noti.service noti
+# swayosd.service drives the brightness/volume media-key OSD (swayosd-client →
+# swayosd-server). Shared across Hyprland + niri via the unit's ConditionEnvironment.
+enable_if_exists swayosd.service swayosd-server
