@@ -5,11 +5,15 @@ set -euo pipefail
 
 systemctl --user daemon-reload
 
+# hypridle.service (Hyprland) and hypridle-niri.service (niri) are both enabled;
+# each carries a ConditionEnvironment gate so only the one matching the live
+# session ever starts. Same for the rest — they're shared across both sessions.
 systemctl --user enable \
   elephant.service \
   waybar.service \
   hyprpaper.service \
   hypridle.service \
+  hypridle-niri.service \
   nm-applet.service \
   polkit-mate-authentication-agent-1.service \
   dotsnap.timer

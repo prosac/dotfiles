@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # Toggle or report the system color-scheme. Flips, in coordination:
 #   - GNOME gsettings (color-scheme + gtk-theme)  -> chromium + GTK apps
-#   - Hyprland border + tabbed-group colors        -> hyprctl keyword
+#   - Hyprland border + tabbed-group colors        -> hyprctl keyword (Hyprland session)
+#   - niri border colors                           -> ~/.config/niri/colors.kdl (niri session)
 #   - Waybar CSS                                   -> ~/.config/waybar/style.css symlink + SIGUSR2
 #   - Ghostty already auto-follows via `theme = light:X,dark:Y` in its config
+#
+# Compositor-aware: the hyprctl calls no-op under niri (guarded with `|| true`),
+# and the niri colors.kdl write only fires under niri. The gsettings + waybar +
+# ghostty paths are identical for both sessions.
 #
 # Usage:
 #   toggle-color-scheme           -> flip dark <-> light
@@ -33,12 +38,35 @@ LIGHT_TAB_TEXT='rgba(2e3440ff)'
 
 WAYBAR_DIR="$HOME/.config/waybar"
 
+# niri border palettes (KDL hex with alpha; same colors as the Hyprland rgba()).
+NIRI_COLORS="$HOME/.config/niri/colors.kdl"
+DARK_NIRI_FROM='#6b7a99ee';  DARK_NIRI_TO='#5c9090ee';  DARK_NIRI_INACTIVE='#44444488'
+LIGHT_NIRI_FROM='#3a4a6bee'; LIGHT_NIRI_TO='#2a6060ee'; LIGHT_NIRI_INACTIVE='#bbbbbb88'
+
+# Rewrite the niri border colors file (included by config.kdl). Only runs under
+# niri; niri watches included files and live-reloads on write. niri has no
+# tabbed-group color concept, so there's no groupbar analog to set.
+write_niri_colors() {  # $1=from $2=to $3=inactive
+    [ "${XDG_CURRENT_DESKTOP:-}" = "niri" ] || return 0
+    mkdir -p "$(dirname "$NIRI_COLORS")"
+    cat > "$NIRI_COLORS" <<EOF
+// Border colors — RUNTIME-MANAGED by toggle-color-scheme. niri live-reloads this.
+layout {
+    border {
+        active-gradient from="$1" to="$2" angle=45
+        inactive-color "$3"
+    }
+}
+EOF
+}
+
 apply_dark() {
     hyprctl keyword general:col.active_border "$DARK_ACTIVE" >/dev/null 2>&1 || true
     hyprctl keyword general:col.inactive_border "$DARK_INACTIVE" >/dev/null 2>&1 || true
     hyprctl keyword group:groupbar:col.active "$DARK_TAB_ACTIVE" >/dev/null 2>&1 || true
     hyprctl keyword group:groupbar:col.inactive "$DARK_TAB_INACTIVE" >/dev/null 2>&1 || true
     hyprctl keyword group:groupbar:text_color "$DARK_TAB_TEXT" >/dev/null 2>&1 || true
+    write_niri_colors "$DARK_NIRI_FROM" "$DARK_NIRI_TO" "$DARK_NIRI_INACTIVE"
     ln -sfn style-dark.css "$WAYBAR_DIR/style.css"
 }
 
@@ -48,6 +76,7 @@ apply_light() {
     hyprctl keyword group:groupbar:col.active "$LIGHT_TAB_ACTIVE" >/dev/null 2>&1 || true
     hyprctl keyword group:groupbar:col.inactive "$LIGHT_TAB_INACTIVE" >/dev/null 2>&1 || true
     hyprctl keyword group:groupbar:text_color "$LIGHT_TAB_TEXT" >/dev/null 2>&1 || true
+    write_niri_colors "$LIGHT_NIRI_FROM" "$LIGHT_NIRI_TO" "$LIGHT_NIRI_INACTIVE"
     ln -sfn style-light.css "$WAYBAR_DIR/style.css"
 }
 
@@ -75,8 +104,9 @@ case "${1:-}" in
     ;;
 
   --apply)
-    # Apply current scheme to hyprland + waybar without flipping gsettings.
-    # Used at Hyprland startup so persistent state matches what's set.
+    # Apply current scheme to the compositor (Hyprland borders or niri colors.kdl)
+    # + waybar without flipping gsettings. Used at session startup so persistent
+    # state matches what's set.
     case "$current" in
       *prefer-light*) apply_light ;;
       *)              apply_dark  ;;  # default to dark when unset/auto

@@ -9,6 +9,9 @@ bootstrap
 # systemd user manager's enable/start state (symlinks, per-machine).
 .config/systemd/user/*.wants
 
+# Python bytecode cache (e.g. generated next to term-ident); never deploy it.
+.local/bin/__pycache__
+
 {{- /* Mail stack (notmuch + lieer for Gmail) is opt-in per machine.
        Toggle via the `mailSetup` prompt in .chezmoi.toml.tmpl. The Doom
        :email module + config.el notmuch block are gated inline in

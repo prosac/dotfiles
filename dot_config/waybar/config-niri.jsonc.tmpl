@@ -1,0 +1,36 @@
+// -*- mode: jsonc -*-
+// niri-session waybar config. Selected by ~/.local/bin/waybar-launch when
+// XDG_CURRENT_DESKTOP=niri. Shares geometry, the right-hand cluster and all
+// agnostic module definitions with the Hyprland session via the include below;
+// only the niri-specific workspace/window modules live here.
+//
+// Unlike hyprland/workspaces, niri/workspaces can't rewrite per-window icons, so
+// we show the workspace name directly ({value} → "Web"/"Code"/"Term"/"Aux" for
+// named workspaces, or the index for dynamic ones). niri has no submaps, so
+// there's no submap module.
+{
+    "include": ["{{ .chezmoi.homeDir }}/.config/waybar/shared.jsonc"],
+
+    "modules-left": [
+        "niri/workspaces"
+    ],
+    "modules-center": [
+        "niri/window",
+        "custom/hidden-windows"
+    ],
+
+    "niri/workspaces": {
+        "format": "{value}",
+        "format-icons": {
+            "focused": "",
+            "urgent": "",
+            "default": ""
+        }
+    },
+
+    "niri/window": {
+        "format": "{title}",
+        "max-length": 80,
+        "separate-outputs": true
+    }
+}

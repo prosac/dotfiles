@@ -1,0 +1,260 @@
+// niri config — KDL. https://yalter.github.io/niri/Configuration:-Introduction
+//
+// This is the niri counterpart of ~/.config/hypr/hyprland.conf. Where it made
+// sense, settings, keybinds and the shared daemon stack mirror the Hyprland
+// session 1:1 (same Super-based keymap, same ghostty/walker/kando/waypaper, same
+// waybar + swww + swayosd + hyprlock + hypridle, same steel-blue→teal palette).
+// Where niri's scrollable-tiling model differs from Hyprland's fixed workspaces,
+// this config leans into niri (named workspaces + native multi-monitor) — the
+// "hybrid" approach: familiar Super+1..6 keys, niri-native output handling.
+//
+// Differences worth knowing (see ~/Documents/docs/niri-setup.md):
+//   - Workspaces are named (Web/Code/Term/Aux), not fixed 1..10 pinned by script.
+//     niri handles docked/undocked output placement declaratively + on hotplug,
+//     replacing setup_workspaces.sh + monitor_hotplug.sh.
+//   - Tabbed window groups → niri tabbed columns (Super+T).
+//   - The Super+R resize submap → direct set-column-width / preset binds.
+//   - Border colors live in colors.kdl (included below), rewritten live by
+//     toggle-color-scheme on dark/light flip — niri auto-reloads it.
+
+input {
+    keyboard {
+        xkb {
+            layout "us"
+            options "ctrl:nocaps"
+        }
+        // Match Hyprland's snappy repeat (repeat_rate 50 / repeat_delay 250).
+        repeat-delay 250
+        repeat-rate 50
+        numlock
+    }
+
+    touchpad {
+        tap
+        natural-scroll
+    }
+
+    mouse {
+        natural-scroll
+{{- if eq .machineClass "laptop" }}
+        // Laptop: flat accel + reduced speed, matching the per-device tweaks the
+        // Hyprland config applied to the G502 / Rival 3 (sensitivity -0.5).
+        accel-profile "flat"
+        accel-speed -0.5
+{{- end }}
+    }
+}
+
+// Outputs / workspaces — the "hybrid" model.
+// Named workspaces always exist and stick to their declared output. When docked,
+// Web/Code/Term land on the external screen and Aux on the laptop; when undocked
+// (no HDMI-A-1) niri places them all on eDP-1 automatically, and migrates them
+// back on hotplug — so no setup_workspaces.sh / monitor_hotplug.sh equivalent is
+// needed. Super+1..6 focus these by index (1=Web, 2=Code, 3=Term, 4=Aux).
+workspace "Web"  { open-on-output "HDMI-A-1"; }
+workspace "Code" { open-on-output "HDMI-A-1"; }
+workspace "Term" { open-on-output "HDMI-A-1"; }
+workspace "Aux"  { open-on-output "eDP-1"; }
+
+layout {
+    gaps 8
+    center-focused-column "never"
+
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+    }
+    default-column-width { proportion 0.5; }
+
+    // Hyprland used always-visible window borders, not just a focus ring, so we
+    // enable the border (active = focused window) and turn the focus ring off.
+    // The gradient/inactive colors are set in colors.kdl, included at the bottom.
+    focus-ring {
+        off
+    }
+    border {
+        on
+        width 2
+    }
+}
+
+cursor {
+    xcursor-size 24
+}
+
+environment {
+    XCURSOR_SIZE "24"
+}
+
+// Don't pop the hotkey cheatsheet on every login (Hyprland had no such overlay).
+hotkey-overlay {
+    skip-at-startup
+}
+
+screenshot-path "~/Pictures/Screenshot from %Y-%m-%d %H-%M-%S.png"
+
+// Apply the current GNOME color-scheme to niri borders + waybar at startup, so
+// the visual state matches gsettings on every login (mirrors the Hyprland
+// exec-once). Absolute path: ~/.local/bin is not on the GUI session PATH.
+spawn-sh-at-startup "{{ .chezmoi.homeDir }}/.local/bin/toggle-color-scheme --apply"
+
+// The rest of the session stack (waybar, swww, waypaper, swayosd, elephant,
+// kando, nm-applet, polkit, noti, hypridle-niri, hyprlock) runs as systemd user
+// services bound to graphical-session.target — niri.service BindsTo it — so they
+// are NOT spawned here. See dot_config/systemd/user/.
+
+///////////////////
+// Window rules  //
+///////////////////
+
+// App → workspace routing (mirrors workspaces.conf).
+window-rule {
+    match app-id=r#"(?i)chromium"#
+    match app-id=r#"(?i)chrome"#
+    match app-id=r#"(?i)firefox"#
+    open-on-workspace "Web"
+}
+window-rule {
+    match app-id=r#"(?i)emacs"#
+    open-on-workspace "Code"
+}
+
+// Rounded corners everywhere (Hyprland rounding 4).
+window-rule {
+    geometry-corner-radius 4
+    clip-to-geometry true
+}
+
+// Firefox picture-in-picture floats (niri default; kept for parity).
+window-rule {
+    match app-id=r#"firefox$"# title="^Picture-in-Picture$"
+    open-floating true
+}
+
+// Kando radial menu — float it, no border background. Kando paints its own
+// full-screen transparent surface; niri may need per-machine tuning here.
+window-rule {
+    match app-id=r#"^menu\.kando\.Kando$"#
+    open-floating true
+    draw-border-with-background false
+}
+
+///////////////////
+// Key bindings  //
+///////////////////
+
+binds {
+    // Show the hotkey cheatsheet on demand (niri built-in).
+    Mod+Shift+Slash { show-hotkey-overlay; }
+
+    // Core
+    Mod+Return hotkey-overlay-title="Terminal: ghostty" { spawn "ghostty"; }
+    Mod+D hotkey-overlay-title="Launcher: walker" { spawn "walker"; }
+    Mod+Tab hotkey-overlay-title="Radial menu: kando" { spawn "kando" "-m" "Example Menu"; }
+    Mod+Q repeat=false { close-window; }
+    Mod+E hotkey-overlay-title="Files: dolphin" { spawn "dolphin"; }
+    Mod+W hotkey-overlay-title="Wallpaper: waypaper" { spawn "waypaper"; }
+    Mod+F { fullscreen-window; }
+    Mod+M { maximize-column; }
+    Mod+V { toggle-window-floating; }
+    Mod+Shift+V { switch-focus-between-floating-and-tiling; }
+    Mod+O repeat=false { toggle-overview; }
+    Mod+grave { focus-window-previous; }
+    Mod+Escape { spawn "loginctl" "lock-session"; }
+    Mod+Shift+Escape { spawn "systemctl" "suspend"; }
+    Mod+Shift+T hotkey-overlay-title="Toggle color scheme" { spawn-sh "{{ .chezmoi.homeDir }}/.local/bin/toggle-color-scheme"; }
+    Mod+G hotkey-overlay-title="Open project (banner)" { spawn-sh "{{ .chezmoi.homeDir }}/.local/bin/term-project"; }
+    Mod+Shift+E { quit; }
+    Ctrl+Alt+Delete { quit; }
+
+    // Focus — vim hjkl. H/L cross to the adjacent monitor at a column edge,
+    // replicating Hyprland's movefocus crossing screens.
+    Mod+H { focus-column-or-monitor-left; }
+    Mod+J { focus-window-down; }
+    Mod+K { focus-window-up; }
+    Mod+L { focus-column-or-monitor-right; }
+
+    // Move/swap the focused window or column (Hyprland Super+Shift+hjkl swap).
+    Mod+Shift+H { move-column-left; }
+    Mod+Shift+J { move-window-down; }
+    Mod+Shift+K { move-window-up; }
+    Mod+Shift+L { move-column-right; }
+
+    // Tabbed columns ≈ Hyprland tabbed window groups.
+    Mod+T { toggle-column-tabbed-display; }
+    // Cycle tabs / windows within the focused column (Hyprland changegroupactive).
+    Mod+BracketLeft  { focus-window-up; }
+    Mod+BracketRight { focus-window-down; }
+    // Pull windows into / push out of the focused column (Hyprland moveintogroup).
+    Mod+Ctrl+H { consume-or-expel-window-left; }
+    Mod+Ctrl+L { consume-or-expel-window-right; }
+    Mod+Ctrl+J { consume-window-into-column; }
+    Mod+Ctrl+K { expel-window-from-column; }
+
+    // Resize — Hyprland's Super+R modal submap, unrolled into direct binds since
+    // niri has no submaps. Super+R cycles preset widths; +/- fine-tune.
+    Mod+R { switch-preset-column-width; }
+    Mod+Shift+R { switch-preset-column-width-back; }
+    Mod+Minus { set-column-width "-10%"; }
+    Mod+Equal { set-column-width "+10%"; }
+    Mod+Shift+Minus { set-window-height "-10%"; }
+    Mod+Shift+Equal { set-window-height "+10%"; }
+    Mod+C { center-column; }
+
+    // Workspaces — Super+1..6 focus (1=Web 2=Code 3=Term 4=Aux), 7-0 best-effort.
+    Mod+1 { focus-workspace 1; }
+    Mod+2 { focus-workspace 2; }
+    Mod+3 { focus-workspace 3; }
+    Mod+4 { focus-workspace 4; }
+    Mod+5 { focus-workspace 5; }
+    Mod+6 { focus-workspace 6; }
+    Mod+7 { focus-workspace 7; }
+    Mod+8 { focus-workspace 8; }
+    Mod+9 { focus-workspace 9; }
+    Mod+0 { focus-workspace 10; }
+
+    // Move the focused window to a workspace (Hyprland Super+Shift+N movetoworkspace).
+    Mod+Shift+1 { move-window-to-workspace 1; }
+    Mod+Shift+2 { move-window-to-workspace 2; }
+    Mod+Shift+3 { move-window-to-workspace 3; }
+    Mod+Shift+4 { move-window-to-workspace 4; }
+    Mod+Shift+5 { move-window-to-workspace 5; }
+    Mod+Shift+6 { move-window-to-workspace 6; }
+    Mod+Shift+7 { move-window-to-workspace 7; }
+    Mod+Shift+8 { move-window-to-workspace 8; }
+    Mod+Shift+9 { move-window-to-workspace 9; }
+    Mod+Shift+0 { move-window-to-workspace 10; }
+
+    // Scroll over the workspace area to switch (Hyprland Super+scroll).
+    Mod+WheelScrollDown cooldown-ms=150 { focus-workspace-down; }
+    Mod+WheelScrollUp   cooldown-ms=150 { focus-workspace-up; }
+
+    // Screenshots — same grim + slurp + wl-clipboard flow as Hyprland, so the
+    // muscle memory and output files match across both sessions. (niri also has
+    // a built-in screenshot UI on `screenshot` if you prefer it later.)
+    Print       { spawn-sh "grim -g \"$(slurp)\" - | wl-copy"; }
+    Shift+Print { spawn-sh "grim -g \"$(slurp)\" ~/Pictures/$(date +%F-%H%M%S).png"; }
+    Mod+Print   { spawn-sh "grim ~/Pictures/$(date +%F-%H%M%S).png"; }
+
+    // Volume / brightness via SwayOSD. The Hyprland binds pinned the OSD to the
+    // focused monitor via `hyprctl monitors`; niri has no hyprctl, so SwayOSD
+    // shows on its default output. allow-when-locked keeps them working locked.
+    XF86AudioRaiseVolume allow-when-locked=true { spawn "swayosd-client" "--output-volume" "+5"; }
+    XF86AudioLowerVolume allow-when-locked=true { spawn "swayosd-client" "--output-volume" "-5"; }
+    XF86AudioMute        allow-when-locked=true { spawn "swayosd-client" "--output-volume" "mute-toggle"; }
+    XF86AudioMicMute     allow-when-locked=true { spawn "swayosd-client" "--input-volume" "mute-toggle"; }
+    XF86MonBrightnessUp   allow-when-locked=true { spawn "swayosd-client" "--brightness" "+10"; }
+    XF86MonBrightnessDown allow-when-locked=true { spawn "swayosd-client" "--brightness" "-10"; }
+
+    // Media keys (playerctl).
+    XF86AudioNext allow-when-locked=true { spawn "playerctl" "next"; }
+    XF86AudioPause allow-when-locked=true { spawn "playerctl" "play-pause"; }
+    XF86AudioPlay allow-when-locked=true { spawn "playerctl" "play-pause"; }
+    XF86AudioPrev allow-when-locked=true { spawn "playerctl" "previous"; }
+}
+
+// Border colors (steel-blue → teal). Managed at runtime by toggle-color-scheme,
+// which rewrites this file on a dark/light flip; niri live-reloads it. Included
+// last so it overrides the structural border block above.
+include "~/.config/niri/colors.kdl"

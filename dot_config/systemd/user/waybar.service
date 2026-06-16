@@ -3,12 +3,15 @@ Description=waybar
 PartOf=graphical-session.target
 After=graphical-session.target
 Requisite=graphical-session.target
-ConditionEnvironment=XDG_CURRENT_DESKTOP=Hyprland
+ConditionEnvironment=|XDG_CURRENT_DESKTOP=Hyprland
+ConditionEnvironment=|XDG_CURRENT_DESKTOP=niri
 
 [Service]
 Type=simple
 ExecStartPre=-/usr/bin/pkill -x waybar
-ExecStart=/usr/bin/waybar
+# waybar-launch picks config.jsonc (Hyprland) or config-niri.jsonc (niri) by
+# $XDG_CURRENT_DESKTOP, then exec()s waybar in place so MAINPID stays valid.
+ExecStart=%h/.local/bin/waybar-launch
 ExecReload=/bin/kill -SIGUSR2 $MAINPID
 Restart=on-failure
 RestartSec=2

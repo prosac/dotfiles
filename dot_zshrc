@@ -120,4 +120,29 @@ case ":$PATH:" in
 esac
 # pnpm end
 
+# --- terminal visual identity (term-ident) -----------------------------------
+# Color each ghostty window by its project (git toplevel) so parallel terminals
+# are recognizable at a glance. Claude Code sessions override this per-session
+# via the UserPromptSubmit hook. No-op outside an interactive Hyprland session.
+if [[ -o interactive && -n "$HYPRLAND_INSTANCE_SIGNATURE" ]]; then
+  autoload -Uz add-zsh-hook
+  # Sentinel must differ from both a real path AND git's "" (non-repo) result,
+  # else a window that starts in $HOME never fires the initial reset (= the
+  # idle transparency). Empty string would collide with the non-repo case.
+  _term_ident_last=$'\x00uninit'
+  _term_ident_update() {
+    local top
+    top=$(git rev-parse --show-toplevel 2>/dev/null)
+    [[ "$top" == "$_term_ident_last" ]] && return
+    _term_ident_last="$top"
+    if [[ -n "$top" ]]; then
+      "$HOME/.local/bin/term-ident" seed "$top" &>/dev/null
+    else
+      "$HOME/.local/bin/term-ident" reset &>/dev/null
+    fi
+  }
+  add-zsh-hook chpwd  _term_ident_update
+  add-zsh-hook precmd _term_ident_update
+fi
+
 

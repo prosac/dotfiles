@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Claude Code UserPromptSubmit hook: color the terminal by the session's
-FIRST prompt, so several agent sessions in the *same* repo stay distinct.
+"""Claude Code UserPromptSubmit hook: give each agent session a stable visual
+identity from its FIRST prompt, so sessions in the same repo stay distinct.
 
-Reads the hook JSON on stdin ({session_id, prompt, ...}). On the first prompt
-of a session only (tracked by a marker file keyed by session_id) it seeds
-term-ident from the prompt text. Subsequent prompts are no-ops; when Claude
-exits, the next shell prompt restores the project color via the zsh hook.
+On the first prompt of a session it computes the identity (glyph + accent, via
+`term-ident identity`), records it — plus a short gist of the prompt — to a
+per-session file that `claude-statusline` reads, and seeds term-ident so the
+window border/tint take the session hue. Later prompts find the file and bail;
+when Claude exits, the next shell prompt restores the project color (zsh hook).
+
+Reads hook JSON on stdin ({session_id, prompt, ...}); never blocks submission.
 """
 import json
 import os
@@ -13,9 +16,23 @@ import subprocess
 import sys
 
 TERM_IDENT = os.path.expanduser("~/.local/bin/term-ident")
-MARKER_DIR = os.path.join(
-    os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "term-ident"
-)
+STATE_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "term-ident")
+
+
+def gist(prompt: str, words: int = 6, limit: int = 48) -> str:
+    """First few words of the prompt, whitespace-collapsed and length-capped."""
+    text = " ".join(prompt.split()[:words])
+    return (text[: limit - 1] + "…") if len(text) > limit else text
+
+
+def identity(seed: str) -> dict:
+    """Glyph + accent for a seed, from term-ident (single source of the palette)."""
+    try:
+        out = subprocess.run([TERM_IDENT, "identity", seed],
+                             capture_output=True, text=True, timeout=3)
+        return json.loads(out.stdout) if out.returncode == 0 else {}
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, ValueError):
+        return {}
 
 
 def main() -> int:
@@ -30,15 +47,21 @@ def main() -> int:
         return 0
 
     safe_id = "".join(c for c in session_id if c.isalnum() or c in "-_")
-    marker = os.path.join(MARKER_DIR, f"claude-{safe_id}")
+    os.makedirs(STATE_DIR, exist_ok=True)
+    state_file = os.path.join(STATE_DIR, f"session-{safe_id}.json")
+
+    # First prompt wins the identity; later prompts find the file and bail.
+    if os.path.exists(state_file):
+        return 0
+
+    record = {"seed": prompt, "gist": gist(prompt), **identity(prompt)}
     try:
-        os.makedirs(MARKER_DIR, exist_ok=True)
-        # O_CREAT|O_EXCL → first prompt wins; later prompts find it and bail.
-        os.close(os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
-    except FileExistsError:
-        return 0
+        tmp = f"{state_file}.tmp"
+        with open(tmp, "w") as f:
+            json.dump(record, f)
+        os.replace(tmp, state_file)  # atomic publish for the statusline
     except OSError:
-        return 0
+        pass
 
     try:
         subprocess.run([TERM_IDENT, "seed", prompt], timeout=3)

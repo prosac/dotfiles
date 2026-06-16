@@ -56,6 +56,13 @@ packages:
     - hyprlock
     - waybar
 
+    # niri WM — scrollable-tiling alternative session (Fedora repo, no COPR).
+    # Ships niri-session + /usr/share/wayland-sessions/niri.desktop, so "Niri"
+    # appears at GDM automatically. xwayland-satellite (pulled in as a dep)
+    # provides XWayland. hyprlock/hypridle/waybar/swww/etc. are shared with the
+    # Hyprland session — see dot_config/niri/ and the systemd user services.
+    - niri
+
     # Display tools (tofik/nwg-shell)
     - nwg-displays
 

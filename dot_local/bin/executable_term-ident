@@ -15,6 +15,8 @@ Usage:
                              resets to defaults when dir is not in a repo
   term-ident seed <string>   seed from an arbitrary string
   term-ident reset           clear tint + border (back to theme defaults)
+  term-ident identity <str>  print {glyph, accent} JSON for a seed — used by the
+                             Claude statusline so its marker matches the border
 
 Env:
   TERM_IDENT_TTY   tty to receive OSC sequences (default /dev/tty)
@@ -35,6 +37,11 @@ TTY = os.environ.get("TERM_IDENT_TTY", "/dev/tty")
 # background, borders are the accents themselves.
 PALETTE = ("#4db5bb", "#46d9ff", "#51afef", "#2257a0", "#a9a1e1", "#c678dd")
 #           teal       cyan       blue       dark-blue  violet     magenta
+
+# Glyphs for the per-session statusline marker. Indexed by a SEPARATE hash from
+# the colour, so glyph and hue vary independently — six hues × ten glyphs gives
+# plenty of distinct (glyph, colour) pairs to tell same-repo sessions apart.
+GLYPHS = ("◆", "●", "▲", "■", "✦", "❖", "⬢", "◈", "✚", "▼")
 
 # Per-scheme theme background + how much accent to blend in for the bg tint.
 THEME = {
@@ -154,9 +161,18 @@ def _mix(a: tuple, b: tuple, f: float) -> tuple:
     return tuple(int(a[i] * (1 - f) + b[i] * f + 0.5) for i in range(3))
 
 
+def accent_for(seed: str) -> str:
+    return PALETTE[zlib.crc32(seed.encode()) % len(PALETTE)]
+
+
+def glyph_for(seed: str) -> str:
+    # separate hash → glyph and colour are independent (see GLYPHS note)
+    return GLYPHS[zlib.crc32(b"glyph:" + seed.encode()) % len(GLYPHS)]
+
+
 def apply_seed(seed: str) -> None:
     t = THEME["light" if scheme_is_light() else "dark"]
-    accent = _rgb(PALETTE[zlib.crc32(seed.encode()) % len(PALETTE)])
+    accent = _rgb(accent_for(seed))
     theme_bg = _rgb(t["bg"])
     black = (0, 0, 0)
 
@@ -184,8 +200,12 @@ def main(argv: list[str]) -> int:
         directory = argv[1] if len(argv) > 1 else os.getcwd()
         top = run("git", "-C", directory, "rev-parse", "--show-toplevel")
         apply_seed(top) if top else reset_all()
+    elif cmd == "identity":
+        seed = argv[1] if len(argv) > 1 else ""
+        print(json.dumps({"glyph": glyph_for(seed), "accent": accent_for(seed)}))
     else:
-        print("usage: term-ident {project [dir]|seed <string>|reset}", file=sys.stderr)
+        print("usage: term-ident {project [dir]|seed <string>|reset|"
+              "identity <string>}", file=sys.stderr)
         return 2
     return 0
 
