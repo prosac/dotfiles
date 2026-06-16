@@ -145,4 +145,11 @@ if [[ -o interactive && -n "$HYPRLAND_INSTANCE_SIGNATURE" ]]; then
   add-zsh-hook precmd _term_ident_update
 fi
 
+{{ if eq .machineRole "work" -}}
+# AsyncAPI CLI autocomplete (work-only tooling). Setup path is written by the
+# asyncapi CLI installer; source it if present.
+ASYNCAPI_AC_ZSH_SETUP_PATH="$HOME/.cache/@asyncapi/cli/autocomplete/zsh_setup"
+test -f "$ASYNCAPI_AC_ZSH_SETUP_PATH" && source "$ASYNCAPI_AC_ZSH_SETUP_PATH" # asyncapi autocomplete setup
+{{- end }}
+
 

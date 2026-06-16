@@ -5,6 +5,7 @@
 {{- $name := promptStringOnce . "name" "Git name (user.name in .gitconfig)" -}}
 {{- $email := promptStringOnce . "email" "Git email" -}}
 {{- $machineClass := promptChoiceOnce . "machineClass" "Machine class" (list "laptop" "desktop") -}}
+{{- $machineRole := promptChoiceOnce . "machineRole" "Machine role (work = deploy work-only tooling, e.g. asyncapi CLI completions)" (list "personal" "work") -}}
 {{- $passwordManager := promptChoiceOnce . "passwordManager" "Password manager" (list "1password" "bitwarden" "none") -}}
 {{- $mailSetup := promptBoolOnce . "mailSetup" "Deploy notmuch + lieer Gmail setup on this machine" false -}}
 
@@ -12,5 +13,6 @@
 name = {{ $name | quote }}
 email = {{ $email | quote }}
 machineClass = {{ $machineClass | quote }}
+machineRole = {{ $machineRole | quote }}
 passwordManager = {{ $passwordManager | quote }}
 mailSetup = {{ $mailSetup }}
