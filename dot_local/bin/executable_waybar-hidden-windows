@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 # Waybar custom module: count of windows hidden behind a maximized window
 # on the active workspace. Stays running, emits JSON on Hyprland IPC events.
+#
+# Hyprland-only: this reflects Hyprland's "maximized window hides the others"
+# behaviour, which has no niri analog (niri's scrollable tiling doesn't stack/
+# hide windows that way). Under niri we emit an empty module once and exit, so
+# the bar stays clean instead of surfacing hyprctl errors.
 
 import json, os, socket, subprocess, sys
 from pathlib import Path
+
+if 'niri' in os.environ.get('XDG_CURRENT_DESKTOP', '').lower():
+    print(json.dumps({'text': '', 'tooltip': '', 'class': ''}), flush=True)
+    sys.exit(0)
 
 
 def query(args):

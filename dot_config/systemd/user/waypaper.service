@@ -3,7 +3,8 @@ Description=Restore last waypaper-selected wallpaper
 PartOf=graphical-session.target
 After=swww.service
 Requires=swww.service
-ConditionEnvironment=XDG_CURRENT_DESKTOP=Hyprland
+ConditionEnvironment=|XDG_CURRENT_DESKTOP=Hyprland
+ConditionEnvironment=|XDG_CURRENT_DESKTOP=niri
 
 [Service]
 Type=oneshot

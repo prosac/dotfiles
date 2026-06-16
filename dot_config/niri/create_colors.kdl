@@ -1,0 +1,13 @@
+// niri border colors — RUNTIME-MANAGED by ~/.local/bin/toggle-color-scheme.
+//
+// chezmoi seeds this file once (create_ prefix: never overwritten afterward),
+// because toggle-color-scheme rewrites it on every dark/light flip and niri
+// live-reloads it. It is included at the end of config.kdl, so it overrides the
+// structural border block there. This seed is the dark palette (steel-blue →
+// desaturated teal), matching the Hyprland default.
+layout {
+    border {
+        active-gradient from="#6b7a99ee" to="#5c9090ee" angle=45
+        inactive-color "#44444488"
+    }
+}

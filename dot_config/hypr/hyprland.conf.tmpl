@@ -297,6 +297,7 @@ bind = $mainMod, P, pseudo, # dwindle
 bind = $mainMod, Escape, exec, loginctl lock-session
 bind = $mainMod SHIFT, Escape, exec, systemctl suspend
 bind = $mainMod SHIFT, T, exec, ~/.local/bin/toggle-color-scheme
+bind = $mainMod, G, exec, ~/.local/bin/term-project   # fuzzy-pick a repo -> ghostty with project banner
 
 # Focus (vim hjkl)
 bind = $mainMod, H, movefocus, l

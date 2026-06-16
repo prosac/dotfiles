@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""Launch waybar with the config matching the live Wayland session.
+
+waybar runs as a single shared systemd user service across both the Hyprland and
+niri sessions (see dot_config/systemd/user/waybar.service). The two compositors
+need different workspace/window modules, so this tiny wrapper picks the right
+config file by $XDG_CURRENT_DESKTOP and exec()s waybar in place (so it keeps the
+service's MAINPID, ExecReload SIGUSR2, etc.). Both configs `include` shared.jsonc
+and rely on the style.css symlink that toggle-color-scheme maintains, so no -s is
+needed here.
+"""
+import os
+import sys
+
+CONFIG_DIR = os.path.expanduser("~/.config/waybar")
+
+desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+config = "config-niri.jsonc" if "niri" in desktop else "config.jsonc"
+path = os.path.join(CONFIG_DIR, config)
+
+if not os.path.exists(path):
+    print(f"waybar-launch: {path} not found", file=sys.stderr)
+    sys.exit(1)
+
+os.execvp("waybar", ["waybar", "-c", path])

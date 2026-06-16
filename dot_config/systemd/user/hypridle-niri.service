@@ -1,0 +1,21 @@
+[Unit]
+Description=hypridle (niri session)
+# niri counterpart of hypridle.service. hypridle is a generic idle daemon, but
+# its config drives compositor-specific dpms commands — the Hyprland config uses
+# `hyprctl dispatch dpms`, which is a no-op under niri. This unit loads
+# hypridle-niri.conf instead, which powers monitors off/on via `niri msg`.
+# Gated to the niri session so the two never run at once.
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+ConditionEnvironment=XDG_CURRENT_DESKTOP=niri
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/hypridle -c %h/.config/hypr/hypridle-niri.conf
+Restart=on-failure
+RestartSec=2
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target

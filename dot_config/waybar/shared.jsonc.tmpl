@@ -1,0 +1,111 @@
+// -*- mode: jsonc -*-
+// Shared waybar pieces common to BOTH the Hyprland and niri sessions: the bar
+// geometry, the right-hand module cluster, and every compositor-agnostic module
+// definition. config.jsonc (Hyprland) and config-niri.jsonc each `include` this
+// file and add only their own modules-left / modules-center arrays plus the
+// compositor-specific workspace/window module definitions.
+//
+// waybar merges includes with "parent wins", so the per-session files define the
+// left/center arrays while this file owns modules-right and the shared defs.
+{
+    "layer": "top",
+    "position": "top",
+    "height": 26,
+    "spacing": 2,
+
+    "modules-right": [
+        "custom/gradia",
+        "custom/color-scheme",
+        "custom/displays",
+        "backlight",
+        "wireplumber",
+        "bluetooth",
+        "network",
+        "battery",
+        "clock",
+        "tray"
+    ],
+
+    "custom/gradia": {
+        "format": "scr",
+        "tooltip": false,
+        "on-click": "flatpak run be.alexandervanhee.gradia"
+    },
+
+    "custom/color-scheme": {
+        "exec": "{{ .chezmoi.homeDir }}/.local/bin/toggle-color-scheme --status",
+        "on-click": "{{ .chezmoi.homeDir }}/.local/bin/toggle-color-scheme",
+        "return-type": "json",
+        "interval": "once",
+        "signal": 8
+    },
+
+    "custom/hidden-windows": {
+        "exec": "{{ .chezmoi.homeDir }}/.local/bin/waybar-hidden-windows",
+        "return-type": "json",
+        "interval": "once"
+    },
+
+    "backlight": {
+        "device": "amdgpu_bl1",
+        "format": "{percent}%",
+        "tooltip-format": "brightness {percent}%",
+        "scroll-step": 5,
+        "on-scroll-up": "brightnessctl set +5%",
+        "on-scroll-down": "brightnessctl set 5%-"
+    },
+
+    "custom/displays": {
+        "format": "",
+        "tooltip": true,
+        "tooltip-format": "configure displays (nwg-displays)",
+        "on-click": "nwg-displays"
+    },
+
+    "bluetooth": {
+        "format": "bt",
+        "format-off": "",
+        "format-disabled": "",
+        "format-connected": "bt ({num_connections})",
+        "tooltip-format": "{controller_alias}\t{controller_address}",
+        "tooltip-format-connected": "{controller_alias}\t{controller_address}\n\n{device_enumerate}",
+        "tooltip-format-enumerate-connected": "{device_alias}\t{device_address}",
+        "on-click": "blueman-manager"
+    },
+
+    "wireplumber": {
+        "format": "{volume}%",
+        "format-muted": "muted",
+        "on-click": "pavucontrol",
+        "scroll-step": 5
+    },
+
+    "network": {
+        "format-wifi": "",
+        "format-ethernet": "",
+        "format-disconnected": "",
+        "tooltip-format-wifi": "{essid} · {signalStrength}%\n{ifname} · {ipaddr}",
+        "tooltip-format-ethernet": "{ifname} · {ipaddr}",
+        "tooltip-format-disconnected": "network offline"
+    },
+
+    "battery": {
+        "states": {
+            "warning": 30,
+            "critical": 15
+        },
+        "format": "{capacity}%",
+        "format-charging": "+{capacity}%",
+        "format-plugged": "{capacity}%"
+    },
+
+    "clock": {
+        "format": "{:%Y-%m-%d  %H:%M}",
+        "tooltip-format": "<tt>{calendar}</tt>"
+    },
+
+    "tray": {
+        "spacing": 8,
+        "icon-size": 16
+    }
+}
