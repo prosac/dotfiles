@@ -62,3 +62,9 @@ shell-integration = none
 command = /bin/zsh --login
 # Use ghostty's native terminfo for proper key sequence handling
 term = xterm-ghostty
+
+# Font-size keybinds. The Ergodox "+" key emits shift+= , so bind the shifted
+# form for increase and drop the default ctrl+= so the bare "=" key no longer
+# bumps the size. Decrease stays on ctrl+- ("-" key) and reset on ctrl+0.
+keybind = ctrl+shift+equal=increase_font_size:1
+keybind = ctrl+==unbind
