@@ -58,6 +58,8 @@ font-family = "JetBrains Mono"
 font-size = 12
 # background-opacity = 0.9
 cursor-style = block
+# G502 X PLUS hi-res wheel scrolls a full page per notch at the default (3)
+mouse-scroll-multiplier = 0.2
 shell-integration = none
 command = /bin/zsh --login
 # Use ghostty's native terminfo for proper key sequence handling
