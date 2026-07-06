@@ -223,3 +223,18 @@
           (:name "today"     :query "date:today"                   :key "t")
           (:name "this week" :query "date:7d.."                    :key "w"))))
 {{- end }}
+
+;; ----------------------------------------------------------------------------
+;; Maintenance: diff your init.el against Doom's upgraded template.
+;; Doom never rewrites init.el after `doom install', so new/renamed modules
+;; only show up in static/init.example.el. Run this after `doom upgrade' to
+;; reconcile. ediff: `n'/`p' to step diffs, `b' copies template -> yours, `q' quits.
+;; ----------------------------------------------------------------------------
+(defun +my/ediff-init-with-template ()
+  "Ediff your `init.el' against Doom's current `init.example.el' template."
+  (interactive)
+  (ediff-files (expand-file-name "init.el" doom-user-dir)
+               (expand-file-name "static/init.example.el" doom-emacs-dir)))
+
+(map! :leader
+      :desc "Ediff init.el vs Doom template" "h d E" #'+my/ediff-init-with-template)
