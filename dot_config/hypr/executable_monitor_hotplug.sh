@@ -25,6 +25,12 @@ ncat -U "$SOCKET" | while IFS= read -r line; do
             # quick succession; let dust settle so monitors -j reflects reality.
             sleep 0.3
             ~/.config/hypr/setup_workspaces.sh
+            # swayosd-server (GTK layer-shell) can wedge when Wayland outputs
+            # churn on hot-plug: it stays alive but silently stops applying
+            # volume/brightness (client still exits 0), so the media keys go
+            # dead. Bounce it so it re-enumerates the current outputs.
+            # See ~/Documents/docs/swayosd-media-keys-hotplug-fix.md
+            systemctl --user restart swayosd
             ;;
     esac
 done
