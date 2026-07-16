@@ -59,6 +59,14 @@ exec = ~/.config/hypr/setup_workspaces.sh
 # HDMI / DP monitors come and go without needing a Hyprland reload.
 exec-once = ~/.config/hypr/monitor_hotplug.sh
 
+# Auto reading-column: when a workspace holds a single tiled window, center it
+# into a ~1250px-wide column with wallpaper on both sides (margins computed per
+# monitor — big on the ultrawide, small on the laptop). Resets to normal tiling
+# for 0 or 2+ windows. Native w[tv1] smart-gaps can't do this (fixed px would
+# break the narrow laptop), hence the socket2 listener. See the reading-column
+# note in ~/Documents/docs/.
+exec-once = ~/.config/hypr/reading-column.py
+
 # swayosd-server runs as a systemd user service (swayosd.service), bound to
 # graphical-session.target, so it is not started here.
 
@@ -207,6 +215,9 @@ animations {
 # Ref https://wiki.hyprland.org/Configuring/Workspace-Rules/
 # "Smart gaps" / "No gaps when only"
 # uncomment all if you wish to use that.
+# NOTE: single-window centering is instead handled by reading-column.py
+# (exec-once above) because it needs per-monitor computed margins, which these
+# fixed-px w[tv1] rules can't express. Don't enable both.
 # workspace = w[tv1], gapsout:0, gapsin:0
 # workspace = f[1], gapsout:0, gapsin:0
 # windowrulev2 = bordersize 0, floating:0, onworkspace:w[tv1]
