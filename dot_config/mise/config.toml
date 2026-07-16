@@ -5,6 +5,12 @@
 #   ch:*   chezmoi workflows
 #   dots:* dotfile change-review / snapshot tooling (coming)
 
+# mise's go tool exports GOBIN=$GOROOT/bin, a version-pinned dir that is NOT on
+# PATH (and is wiped on every Go upgrade). Redirect `go install` output to the
+# conventional $GOPATH/bin, which IS on PATH.
+[env]
+GOBIN = "{{env.HOME}}/.local/go/bin"
+
 [tasks."ch:status"]
 description = "Show chezmoi drift (source vs target)"
 run = "chezmoi status"
@@ -106,3 +112,10 @@ echo "Installed: /usr/share/wayland-sessions/hyprland-dms.desktop"
 echo "dms.service is now disabled in the default Hyprland session."
 echo "Log out and pick 'Hyprland (DMS)' at GDM to try it."
 '''
+
+[tools]
+argocd = "3.1"
+go = "1.26.0"
+node = "24.14.0"
+nsc = "2.12.0"
+usage = "2.13.1"
