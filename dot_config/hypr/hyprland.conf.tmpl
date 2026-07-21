@@ -55,9 +55,13 @@ $menu = walker
 # (setup_workspaces.sh handles renames internally — see comments there.)
 exec = ~/.config/hypr/setup_workspaces.sh
 
-# Listen for monitor hot-plug events so workspaces re-pin + migrate when
-# HDMI / DP monitors come and go without needing a Hyprland reload.
-exec-once = ~/.config/hypr/monitor_hotplug.sh
+# Keep workspace pinning in sync with the connected monitors so workspaces
+# re-pin + migrate when HDMI / DP monitors come and go — without a Hyprland
+# reload. Level-triggered (reconciles against the actual monitor set, with a
+# periodic safety-net), so a dropped monitoradded edge — e.g. from a Meet
+# screen-share output churn or dock/undock — self-heals instead of leaving the
+# layout stuck undocked.
+exec-once = ~/.config/hypr/monitor-hotplug.py
 
 # Auto reading-column: when a workspace holds a single tiled window, center it
 # into a ~1250px-wide column with wallpaper on both sides (margins computed per
@@ -298,6 +302,7 @@ $mainMod = SUPER # Sets "Windows" key as main modifier
 # Core
 bind = $mainMod, Return, exec, $terminal
 bind = $mainMod, D, exec, $menu
+bind = $mainMod, Space, exec, $menu       # macOS Spotlight-style launcher trigger
 bind = $mainMod, Tab, exec, kando -m "Example Menu"
 bind = $mainMod, Q, killactive,
 bind = $mainMod SHIFT, E, exit,
