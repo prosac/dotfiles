@@ -66,6 +66,13 @@ packages:
     # Display tools (tofik/nwg-shell)
     - nwg-displays
 
+    # GTK theme build deps — the Graphite-teal-nord theme that
+    # toggle-color-scheme selects is not packaged for Fedora; it is built from
+    # source by run_onchange_after_zz-install-gtk-theme.sh, which needs these.
+    - sassc
+    - gtk-murrine-engine
+    - gnome-themes-extra
+
     # System integration / tray / auth
     - blueman
     - mate-polkit

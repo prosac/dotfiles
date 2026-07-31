@@ -130,11 +130,19 @@ if [[ -o interactive && -n "$HYPRLAND_INSTANCE_SIGNATURE" ]]; then
   # else a window that starts in $HOME never fires the initial reset (= the
   # idle transparency). Empty string would collide with the non-repo case.
   _term_ident_last=$'\x00uninit'
+  # The cache key carries the color scheme as well as the project: the tint is
+  # blended against the scheme's background, so a dark<->light flip has to re-fire
+  # even when the project hasn't changed. toggle-color-scheme pushes a retint to
+  # every live session itself; this is the self-heal path for anything it missed.
+  # Read from its marker file — `$(<file)` is a zsh builtin, and this hook runs on
+  # every prompt, so a gsettings call here would be far too expensive.
   _term_ident_update() {
-    local top
+    local top key scheme=dark marker="${XDG_RUNTIME_DIR:-/tmp}/term-ident/scheme"
     top=$(git rev-parse --show-toplevel 2>/dev/null)
-    [[ "$top" == "$_term_ident_last" ]] && return
-    _term_ident_last="$top"
+    [[ -r "$marker" ]] && scheme="$(<$marker)"
+    key="$top|$scheme"
+    [[ "$key" == "$_term_ident_last" ]] && return
+    _term_ident_last="$key"
     if [[ -n "$top" ]]; then
       "$HOME/.local/bin/term-ident" seed "$top" &>/dev/null
     else
