@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
-# Toggle or report the system color-scheme. Flips, in coordination:
-#   - GNOME gsettings (color-scheme + gtk-theme)  -> chromium + GTK apps
+# Toggle or report the system color-scheme. This is the single fan-out point —
+# gsettings is the source of truth, everything below is a consumer that either
+# reads it live or has to be pushed. Flips, in coordination:
+#   - GNOME gsettings (color-scheme + gtk-theme)  -> the portal's
+#     org.freedesktop.appearance, which is what libadwaita/GTK4, ghostty,
+#     Chromium/Electron and Emacs (auto-dark) all read live. Nothing to push.
+#   - GTK settings.ini (gtk-3.0 + gtk-4.0)         -> rewritten below. There is no
+#     settings daemon under Hyprland/niri, so for plain GTK3 apps this file, not
+#     gsettings, decides light vs dark. GtkSettings watches it and re-themes live.
 #   - Hyprland border + tabbed-group colors        -> hyprctl keyword (Hyprland session)
 #   - niri border colors                           -> ~/.config/niri/colors.kdl (niri session)
+#   - hyprlock colors                              -> ~/.config/hypr/hyprlock-colors.conf
 #   - Waybar CSS                                   -> ~/.config/waybar/style.css symlink + SIGUSR2
-#   - Ghostty already auto-follows via `theme = light:X,dark:Y` in its config
+#   - Running ghostty sessions                     -> `term-ident retint`. ghostty's own
+#     theme follows the portal, but term-ident's per-session OSC-11 tint overrides
+#     the theme background and does NOT recompute itself, so it must be replayed.
 #
 # Compositor-aware: the hyprctl calls no-op under niri (guarded with `|| true`),
-# and the niri colors.kdl write only fires under niri. The gsettings + waybar +
-# ghostty paths are identical for both sessions.
+# and the niri colors.kdl write only fires under niri. The gsettings + GTK +
+# waybar + hyprlock + ghostty paths are identical for both sessions.
+#
+# See ~/Documents/docs/system-color-scheme-switching.md for the full fan-out map.
 #
 # Usage:
 #   toggle-color-scheme           -> flip dark <-> light
@@ -43,13 +55,43 @@ NIRI_COLORS="$HOME/.config/niri/colors.kdl"
 DARK_NIRI_FROM='#6b7a99ee';  DARK_NIRI_TO='#5c9090ee';  DARK_NIRI_INACTIVE='#44444488'
 LIGHT_NIRI_FROM='#3a4a6bee'; LIGHT_NIRI_TO='#2a6060ee'; LIGHT_NIRI_INACTIVE='#bbbbbb88'
 
+# GTK settings.ini — both toolkit versions. Seeded by chezmoi, owned here.
+GTK3_SETTINGS="$HOME/.config/gtk-3.0/settings.ini"
+GTK4_SETTINGS="$HOME/.config/gtk-4.0/settings.ini"
+
+# hyprlock palettes. The backdrop is a blurred screenshot, so brightness is what
+# decides whether the lock screen reads light or dark; the text colors follow from
+# it. Accents match the borders (teal 5c9090 / 2a6060, nord ink 2e3440).
+HYPRLOCK_COLORS="$HOME/.config/hypr/hyprlock-colors.conf"
+DARK_LOCK_BRIGHT='0.4'
+DARK_LOCK_OUTER='rgba(5c909099)'; DARK_LOCK_INNER='rgba(14161aee)'
+DARK_LOCK_FONT='rgba(c0c4ccff)';  DARK_LOCK_FONT_DIM='rgba(c0c4cc99)'
+LIGHT_LOCK_BRIGHT='0.85'
+LIGHT_LOCK_OUTER='rgba(2a606099)'; LIGHT_LOCK_INNER='rgba(f9f9f9ee)'
+LIGHT_LOCK_FONT='rgba(2e3440ff)';  LIGHT_LOCK_FONT_DIM='rgba(2e344099)'
+
+# One-word marker of the active scheme. The zsh precmd term-ident hook folds this
+# into its cache key so a session also self-heals on its next prompt; reading a
+# file is cheap enough for a per-prompt hook, spawning gsettings is not.
+TERM_IDENT_STATE="${XDG_RUNTIME_DIR:-/tmp}/term-ident"
+SCHEME_MARKER="$TERM_IDENT_STATE/scheme"
+TERM_IDENT="$HOME/.local/bin/term-ident"
+
+# Replace a file's contents atomically, so watchers (GtkSettings, niri) never read
+# a half-written file.
+write_file() {  # $1=path, contents on stdin
+    mkdir -p "$(dirname "$1")"
+    tmp="$1.tmp.$$"
+    cat > "$tmp"
+    mv -f "$tmp" "$1"
+}
+
 # Rewrite the niri border colors file (included by config.kdl). Only runs under
 # niri; niri watches included files and live-reloads on write. niri has no
 # tabbed-group color concept, so there's no groupbar analog to set.
 write_niri_colors() {  # $1=from $2=to $3=inactive
     [ "${XDG_CURRENT_DESKTOP:-}" = "niri" ] || return 0
-    mkdir -p "$(dirname "$NIRI_COLORS")"
-    cat > "$NIRI_COLORS" <<EOF
+    write_file "$NIRI_COLORS" <<EOF
 // Border colors — RUNTIME-MANAGED by toggle-color-scheme. niri live-reloads this.
 layout {
     border {
@@ -60,6 +102,54 @@ layout {
 EOF
 }
 
+# Rewrite both GTK settings.ini files. This — not gsettings — is what plain GTK3
+# apps read for light/dark, since no settings daemon runs under Hyprland/niri.
+# GtkSettings monitors the file, so running apps re-theme without a restart.
+# The icon theme is carried over from gsettings so a flip never clobbers it.
+write_gtk_settings() {  # $1=theme-name $2=prefer-dark(0|1)
+    icons=$(gsettings get "$SCHEMA" icon-theme 2>/dev/null | tr -d "'" || true)
+    [ -n "$icons" ] || icons=Adwaita
+    for f in "$GTK3_SETTINGS" "$GTK4_SETTINGS"; do
+        write_file "$f" <<EOF
+# RUNTIME-MANAGED by ~/.local/bin/toggle-color-scheme — edits here are lost on the
+# next dark/light flip. Change the palette in that script instead.
+[Settings]
+gtk-theme-name=$1
+gtk-icon-theme-name=$icons
+gtk-application-prefer-dark-theme=$2
+EOF
+    done
+}
+
+# Rewrite the hyprlock color variables (sourced at the top of hyprlock.conf).
+# hyprlock reads its config at launch, so the next lock picks this up.
+write_hyprlock_colors() {  # $1=brightness $2=outer $3=inner $4=font $5=font-dim
+    write_file "$HYPRLOCK_COLORS" <<EOF
+# hyprlock colors — RUNTIME-MANAGED by toggle-color-scheme.
+\$lock_brightness = $1
+\$lock_outer = $2
+\$lock_inner = $3
+\$lock_font = $4
+\$lock_font_dim = $5
+EOF
+}
+
+# Record the scheme, then replay every live ghostty session's identity tint.
+#
+# term-ident blends its per-session accent into the *scheme's* background and
+# pushes it with OSC 11, which overrides ghostty's own theme background — so on a
+# flip the tint has to be recomputed or the window ends up light-on-light. It must
+# REPLAY each session's stored seed, never re-derive it: a seed can come from a
+# Claude prompt (term-ident-claude), not just the git toplevel, and re-deriving
+# would silently reassign window identities.
+retint_terminals() {  # $1=dark|light
+    mkdir -p "$TERM_IDENT_STATE"
+    printf '%s\n' "$1" > "$SCHEME_MARKER.tmp.$$"
+    mv -f "$SCHEME_MARKER.tmp.$$" "$SCHEME_MARKER"
+    [ -x "$TERM_IDENT" ] || return 0
+    "$TERM_IDENT" retint >/dev/null 2>&1 || true
+}
+
 apply_dark() {
     hyprctl keyword general:col.active_border "$DARK_ACTIVE" >/dev/null 2>&1 || true
     hyprctl keyword general:col.inactive_border "$DARK_INACTIVE" >/dev/null 2>&1 || true
@@ -67,6 +157,9 @@ apply_dark() {
     hyprctl keyword group:groupbar:col.inactive "$DARK_TAB_INACTIVE" >/dev/null 2>&1 || true
     hyprctl keyword group:groupbar:text_color "$DARK_TAB_TEXT" >/dev/null 2>&1 || true
     write_niri_colors "$DARK_NIRI_FROM" "$DARK_NIRI_TO" "$DARK_NIRI_INACTIVE"
+    write_gtk_settings "$DARK_THEME" 1
+    write_hyprlock_colors "$DARK_LOCK_BRIGHT" "$DARK_LOCK_OUTER" "$DARK_LOCK_INNER" \
+                          "$DARK_LOCK_FONT" "$DARK_LOCK_FONT_DIM"
     ln -sfn style-dark.css "$WAYBAR_DIR/style.css"
 }
 
@@ -77,6 +170,9 @@ apply_light() {
     hyprctl keyword group:groupbar:col.inactive "$LIGHT_TAB_INACTIVE" >/dev/null 2>&1 || true
     hyprctl keyword group:groupbar:text_color "$LIGHT_TAB_TEXT" >/dev/null 2>&1 || true
     write_niri_colors "$LIGHT_NIRI_FROM" "$LIGHT_NIRI_TO" "$LIGHT_NIRI_INACTIVE"
+    write_gtk_settings "$LIGHT_THEME" 0
+    write_hyprlock_colors "$LIGHT_LOCK_BRIGHT" "$LIGHT_LOCK_OUTER" "$LIGHT_LOCK_INNER" \
+                          "$LIGHT_LOCK_FONT" "$LIGHT_LOCK_FONT_DIM"
     ln -sfn style-light.css "$WAYBAR_DIR/style.css"
 }
 
@@ -104,30 +200,35 @@ case "${1:-}" in
     ;;
 
   --apply)
-    # Apply current scheme to the compositor (Hyprland borders or niri colors.kdl)
-    # + waybar without flipping gsettings. Used at session startup so persistent
-    # state matches what's set.
+    # Apply the current scheme to every pushed consumer (compositor borders, GTK,
+    # hyprlock, waybar, ghostty tints) without flipping gsettings. Used at session
+    # startup so persistent state matches what's set.
     case "$current" in
-      *prefer-light*) apply_light ;;
-      *)              apply_dark  ;;  # default to dark when unset/auto
+      *prefer-light*) apply_light; scheme=light ;;
+      *)              apply_dark;  scheme=dark  ;;  # default to dark when unset/auto
     esac
     reload_waybar
+    retint_terminals "$scheme"
     exit 0
     ;;
 esac
 
-# Default: toggle.
+# Default: toggle. gsettings is flipped FIRST — term-ident reads it back to decide
+# which background to blend the tint against, so retint_terminals must run after.
 case "$current" in
   *prefer-dark*)
     gsettings set "$SCHEMA" color-scheme 'prefer-light'
     gsettings set "$SCHEMA" gtk-theme    "$LIGHT_THEME"
     apply_light
+    scheme=light
     ;;
   *)
     gsettings set "$SCHEMA" color-scheme 'prefer-dark'
     gsettings set "$SCHEMA" gtk-theme    "$DARK_THEME"
     apply_dark
+    scheme=dark
     ;;
 esac
 
 reload_waybar
+retint_terminals "$scheme"

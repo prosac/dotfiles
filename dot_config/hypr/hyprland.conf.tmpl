@@ -97,6 +97,13 @@ exec-once = ~/.local/bin/toggle-color-scheme --apply
 env = XCURSOR_SIZE,24
 env = HYPRCURSOR_SIZE,24
 
+# Make Qt apps follow the GTK theme, so they flip with toggle-color-scheme like
+# everything else. The qgtk3 platform theme plugin ships with Fedora's qt5/qt6
+# base packages (libqgtk3.so) — no qt5ct/qt6ct/Kvantum needed. Mirrored in the
+# niri session's `environment` block; ~/.config/environment.d/ would NOT work,
+# since Hyprland is started by GDM rather than by systemd.
+env = QT_QPA_PLATFORMTHEME,gtk3
+
 
 #####################
 ### LOOK AND FEEL ###

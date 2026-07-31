@@ -10,16 +10,27 @@ parallel terminals are recognizable at a glance:
 Border is the strong, theme-independent cue; the bg tint is the peripheral
 bonus. Degrades to a no-op outside Hyprland / when not running under ghostty.
 
+Both cues are computed against the ACTIVE color scheme, so a dark<->light flip
+invalidates them — an OSC-11 background in particular overrides ghostty's own
+theme background and will not recompute itself. Every applied seed is therefore
+recorded under $XDG_RUNTIME_DIR/term-ident/, and `term-ident retint` replays
+those records against the current scheme. toggle-color-scheme calls it on every
+flip.
+
 Usage:
   term-ident project [dir]   seed from the git toplevel of dir (default $PWD);
                              resets to defaults when dir is not in a repo
   term-ident seed <string>   seed from an arbitrary string
   term-ident reset           clear tint + border (back to theme defaults)
+  term-ident retint          re-apply every recorded session for the current
+                             scheme; prunes records of dead sessions
   term-ident identity <str>  print {glyph, accent} JSON for a seed — used by the
                              Claude statusline so its marker matches the border
 
 Env:
   TERM_IDENT_TTY   tty to receive OSC sequences (default /dev/tty)
+  TERM_IDENT_PID   pid to start the ghostty ppid-chain walk from (default self);
+                   lets `retint` resolve a window it is not a descendant of
 """
 from __future__ import annotations
 
@@ -30,6 +41,10 @@ import sys
 import zlib
 
 TTY = os.environ.get("TERM_IDENT_TTY", "/dev/tty")
+
+# Per-session records, keyed by tty. Shares the directory term-ident-claude uses
+# for its per-session statusline files; tmpfs, so it clears itself on logout.
+STATE_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "term-ident")
 
 # Cool accents from the theme palette (Doom One + doom-emacs extended). Every
 # tint derives from one of these, so colors always sit on-theme. Edit the list
@@ -59,9 +74,36 @@ def run(*args: str) -> str | None:
     return out.stdout.strip() if out.returncode == 0 else None
 
 
-def ghostty_address() -> str | None:
-    """Walk the /proc ppid chain to the ghostty process, then map its PID to a
-    Hyprland window address.
+def _env_pid() -> int | None:
+    try:
+        return int(os.environ["TERM_IDENT_PID"])
+    except (KeyError, ValueError):
+        return None
+
+
+def ghostty_pid(start: int | None = None) -> int | None:
+    """Walk the /proc ppid chain up to the ghostty process that owns us.
+
+    `start` (or $TERM_IDENT_PID) overrides the starting point so `retint` can
+    resolve a window it is not itself a descendant of. Passing a ghostty pid
+    directly is fine — the loop tests the starting pid first."""
+    pid = start or _env_pid() or os.getpid()
+    for _ in range(16):
+        try:
+            comm = open(f"/proc/{pid}/comm").read().strip()
+            ppid = int(open(f"/proc/{pid}/stat").read().split()[3])
+        except (OSError, IndexError, ValueError):
+            return None
+        if comm == "ghostty":
+            return pid
+        if ppid in (0, pid):
+            return None
+        pid = ppid
+    return None
+
+
+def ghostty_address(start: int | None = None) -> str | None:
+    """Map the owning ghostty process to a Hyprland window address.
 
     Hyprland-only: the per-window border tint is set via `hyprctl setprop`, which
     has no niri equivalent (niri can't recolor a single window's border at
@@ -69,19 +111,7 @@ def ghostty_address() -> str | None:
     OSC-11 background tint — which is just a terminal escape — still applies."""
     if os.environ.get("XDG_CURRENT_DESKTOP") != "Hyprland" or not _have("hyprctl"):
         return None
-    pid, gpid = os.getpid(), None
-    for _ in range(16):
-        try:
-            comm = open(f"/proc/{pid}/comm").read().strip()
-            ppid = int(open(f"/proc/{pid}/stat").read().split()[3])
-        except (OSError, IndexError, ValueError):
-            break
-        if comm == "ghostty":
-            gpid = pid
-            break
-        if ppid in (0, pid):
-            break
-        pid = ppid
+    gpid = ghostty_pid(start)
     if gpid is None:
         return None
     clients = run("hyprctl", "clients", "-j")
@@ -110,9 +140,9 @@ def _setprop(addr: str, **props: object) -> None:
         run("hyprctl", "dispatch", "setprop", f"address:{addr}", prop, str(val))
 
 
-def apply_window(active: str, inactive: str) -> None:
+def apply_window(active: str, inactive: str, pid: int | None = None) -> None:
     """In a project: colored border + fully opaque (alpha explicitly 1)."""
-    addr = ghostty_address()
+    addr = ghostty_address(pid)
     if addr:
         _setprop(addr, activebordercolor=active, inactivebordercolor=inactive,
                  alpha=1, alphainactive=1)
@@ -126,25 +156,73 @@ def reset_window() -> None:
                  alpha=IDLE_ALPHA, alphainactive=IDLE_ALPHA_INACTIVE)
 
 
-def write_tty(seq: str) -> None:
+def write_tty(seq: str, tty: str | None = None) -> None:
     try:
-        with open(TTY, "w") as t:
+        with open(tty or TTY, "w") as t:
             t.write(seq)
     except OSError:
         pass
 
 
-def set_bg(hex6: str) -> None:
-    write_tty(f"\033]11;#{hex6}\033\\")   # OSC 11 — set background
+def set_bg(hex6: str, tty: str | None = None) -> None:
+    write_tty(f"\033]11;#{hex6}\033\\", tty)   # OSC 11 — set background
 
 
 def reset_bg() -> None:
     write_tty("\033]111\033\\")            # OSC 111 — reset background
 
 
-def scheme_is_light() -> bool:
-    val = run("gsettings", "get", "org.gnome.desktop.interface", "color-scheme") or ""
-    return "prefer-light" in val      # default to dark when unset/auto
+def resolve_tty(tty: str | None = None) -> str | None:
+    """Real device path of our OSC target. /dev/tty is a magic per-process device,
+    so it must be resolved to the actual /dev/pts/N before it can key state."""
+    target = tty or TTY
+    try:
+        fd = os.open(target, os.O_RDONLY | os.O_NOCTTY)
+    except OSError:
+        return None
+    try:
+        return os.ttyname(fd)
+    except OSError:
+        return None if target == "/dev/tty" else target
+    finally:
+        os.close(fd)
+
+
+def _state_path(tty: str) -> str:
+    key = tty.removeprefix("/dev/").replace("/", "-")
+    return os.path.join(STATE_DIR, f"tty-{key}.json")
+
+
+def save_state(seed: str, tty: str | None = None, pid: int | None = None) -> None:
+    """Record what this session is showing, so `retint` can replay it after a
+    scheme flip. The seed is stored rather than recomputed on purpose: it may have
+    come from a Claude prompt (term-ident-claude) rather than the git toplevel, so
+    re-deriving it would silently reassign window identities."""
+    resolved = resolve_tty(tty)
+    if not resolved:
+        return
+    record = {"seed": seed, "tty": resolved, "ghostty_pid": pid or ghostty_pid()}
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        path = _state_path(resolved)
+        tmp = f"{path}.tmp"
+        with open(tmp, "w") as f:
+            json.dump(record, f)
+        os.replace(tmp, path)     # atomic — retint may be reading concurrently
+    except OSError:
+        pass
+
+
+def clear_state() -> None:
+    """Drop this session's record: a reset session needs no replay, since OSC 111
+    and border -1 both fall back to values that are already scheme-correct."""
+    resolved = resolve_tty()
+    if not resolved:
+        return
+    try:
+        os.unlink(_state_path(resolved))
+    except OSError:
+        pass
 
 
 def _rgb(hex6: str) -> tuple[int, int, int]:
@@ -170,7 +248,12 @@ def glyph_for(seed: str) -> str:
     return GLYPHS[zlib.crc32(b"glyph:" + seed.encode()) % len(GLYPHS)]
 
 
-def apply_seed(seed: str) -> None:
+def scheme_is_light() -> bool:
+    val = run("gsettings", "get", "org.gnome.desktop.interface", "color-scheme") or ""
+    return "prefer-light" in val      # default to dark when unset/auto
+
+
+def apply_seed(seed: str, tty: str | None = None, pid: int | None = None) -> None:
     t = THEME["light" if scheme_is_light() else "dark"]
     accent = _rgb(accent_for(seed))
     theme_bg = _rgb(t["bg"])
@@ -181,13 +264,45 @@ def apply_seed(seed: str) -> None:
     active = f"rgba({_hex(border)}ee) rgba({_hex(_mix(border, black, 0.30))}ee) 45deg"
     inactive = f"rgba({_hex(_mix(border, theme_bg, 0.45))}aa)"
 
-    set_bg(_hex(bg))
-    apply_window(active, inactive)
+    set_bg(_hex(bg), tty)
+    apply_window(active, inactive, pid)
+    save_state(seed, tty, pid)
 
 
 def reset_all() -> None:
     reset_bg()
     reset_window()
+    clear_state()
+
+
+def retint() -> None:
+    """Re-apply every recorded session against the current scheme.
+
+    Called by toggle-color-scheme after it flips gsettings. Records whose tty or
+    ghostty process is gone are pruned as we go."""
+    try:
+        names = sorted(os.listdir(STATE_DIR))
+    except OSError:
+        return
+    for name in names:
+        if not (name.startswith("tty-") and name.endswith(".json")):
+            continue
+        path = os.path.join(STATE_DIR, name)
+        try:
+            with open(path) as f:
+                record = json.load(f)
+        except (OSError, ValueError):
+            continue
+        seed, tty, pid = record.get("seed"), record.get("tty"), record.get("ghostty_pid")
+        alive = bool(seed) and bool(tty) and os.path.exists(tty) \
+            and (not pid or os.path.exists(f"/proc/{pid}"))
+        if not alive:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            continue
+        apply_seed(seed, tty, pid)
 
 
 def main(argv: list[str]) -> int:
@@ -196,6 +311,8 @@ def main(argv: list[str]) -> int:
         reset_all()
     elif cmd == "seed":
         apply_seed(argv[1]) if len(argv) > 1 and argv[1] else reset_all()
+    elif cmd == "retint":
+        retint()
     elif cmd in ("project", ""):
         directory = argv[1] if len(argv) > 1 else os.getcwd()
         top = run("git", "-C", directory, "rev-parse", "--show-toplevel")
@@ -204,7 +321,7 @@ def main(argv: list[str]) -> int:
         seed = argv[1] if len(argv) > 1 else ""
         print(json.dumps({"glyph": glyph_for(seed), "accent": accent_for(seed)}))
     else:
-        print("usage: term-ident {project [dir]|seed <string>|reset|"
+        print("usage: term-ident {project [dir]|seed <string>|reset|retint|"
               "identity <string>}", file=sys.stderr)
         return 2
     return 0

@@ -85,6 +85,11 @@ cursor {
 
 environment {
     XCURSOR_SIZE "24"
+    // Make Qt apps follow the GTK theme, so they flip with toggle-color-scheme
+    // like everything else. libqgtk3.so ships with Fedora's qt5/qt6 base — no
+    // qt5ct/qt6ct/Kvantum needed. Mirrors `env = QT_QPA_PLATFORMTHEME,gtk3` in
+    // the Hyprland config.
+    QT_QPA_PLATFORMTHEME "gtk3"
 }
 
 // Don't pop the hotkey cheatsheet on every login (Hyprland had no such overlay).
