@@ -10,7 +10,7 @@
 #   2: Code    (emacs pinned; org-mode notes live here)
 #   3: Term    (terminals — many of them, dwindle splits or grouped tabs)
 #   4: Term
-#   5: Term
+#   5: All The Things (the app under development; pinned by class)
 #   6: Aux     (manuscript, file manager, misc one-offs)
 
 # First invocation at session start: monitors may still be initializing.
@@ -51,7 +51,7 @@ hyprctl dispatch renameworkspace 1 "1:Web"  >/dev/null
 hyprctl dispatch renameworkspace 2 "2:Code" >/dev/null
 hyprctl dispatch renameworkspace 3 "3:Term" >/dev/null
 hyprctl dispatch renameworkspace 4 "4:Term" >/dev/null
-hyprctl dispatch renameworkspace 5 "5:Term" >/dev/null
+hyprctl dispatch renameworkspace 5 "5:All The Things" >/dev/null
 hyprctl dispatch renameworkspace 6 "6:Aux"  >/dev/null
 
 # 3) Migrate any already-existing workspaces sitting on the wrong monitor.
