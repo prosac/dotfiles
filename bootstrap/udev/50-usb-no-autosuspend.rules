@@ -1,0 +1,23 @@
+# /etc/udev/rules.d/50-usb-no-autosuspend.rules
+#
+# Hold specific USB devices out of runtime autosuspend.
+#
+# WHY udev and not TLP: this used to live in USB_DENYLIST in /etc/tlp.conf, but
+# power-profiles-daemon declares Conflicts=tlp.service and displaced TLP on
+# 2025-12-31 — after which tlp.service was silently skipped by systemd
+# (ConditionResult=no, no journal entry) and the denylist protected nothing for
+# ~7 months. A udev rule does not depend on any power daemon winning a conflict.
+# See ~/Documents/docs/usb-stutter-fix.md and
+#     ~/Documents/docs/fido2-login-latency-power-management.md
+#
+# TEST=="power/control" guards devices that do not expose runtime PM at all.
+
+# Kensington VeriMark Guard FIDO2 key — authentication path. With autosuspend on
+# (2s delay) the key is asleep when PAM starts, so the first login attempt hits a
+# sleeping device and appears to do nothing.
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="047d", ATTR{idProduct}=="8055", TEST=="power/control", ATTR{power/control}="on"
+
+# Genesys Logic USB hubs (dock/monitor hubs) — autosuspend here caused the
+# mouse/keyboard stutter diagnosed in usb-stutter-fix.md.
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="05e3", ATTR{idProduct}=="0610", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="05e3", ATTR{idProduct}=="0620", TEST=="power/control", ATTR{power/control}="on"

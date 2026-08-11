@@ -96,6 +96,76 @@ rm -f "$rendered"
 echo "Installed: /etc/sudoers.d/dotsnap"
 '''
 
+[tasks."bootstrap:tmpfiles"]
+description = "Install /etc/tmpfiles.d/dotsnap.conf and create the snapshot tree (asks for sudo)"
+run = '''
+set -e
+src="$(chezmoi source-path)/bootstrap/tmpfiles/dotsnap.conf.tmpl"
+rendered="$(mktemp)"
+chezmoi execute-template < "$src" > "$rendered"
+sudo install -m 644 -o root -g root "$rendered" /etc/tmpfiles.d/dotsnap.conf
+rm -f "$rendered"
+sudo systemd-tmpfiles --create /etc/tmpfiles.d/dotsnap.conf
+echo "Installed: /etc/tmpfiles.d/dotsnap.conf"
+# inode 256 is the root of a btrfs subvolume; anything else means tmpfiles fell
+# back to a plain directory (see the comments in the template).
+if [ "$(stat -c %i /home/.snapshots)" = "256" ]; then
+  echo "/home/.snapshots is a btrfs subvolume (excluded from /home snapshots)"
+else
+  echo "WARNING: /home/.snapshots is a plain directory, not a subvolume" >&2
+fi
+'''
+
+[tasks."bootstrap:pam-u2f"]
+description = "Install /etc/security/pam_u2f.conf (requires FIDO2 user verification; asks for sudo)"
+run = '''
+set -e
+src="$(chezmoi source-path)/bootstrap/pam/pam_u2f.conf"
+sudo install -m 644 -o root -g root "$src" /etc/security/pam_u2f.conf
+echo "Installed: /etc/security/pam_u2f.conf"
+echo "Effective settings:"
+grep -vE '^\s*#|^\s*$' /etc/security/pam_u2f.conf | sed 's/^/  /'
+# The PAM line must NOT carry userverification itself, or it would override this.
+echo "PAM line (authselect-generated):"
+grep -n "pam_u2f" /etc/pam.d/system-auth | sed 's/^/  /'
+'''
+
+[tasks."bootstrap:pam-hyprlock"]
+description = "Install /etc/pam.d/hyprlock-fido2 (lean lock-screen auth stack, no pam_sss double prompt; asks for sudo)"
+run = '''
+set -e
+src="$(chezmoi source-path)/bootstrap/pam/hyprlock-fido2"
+sudo install -m 644 -o root -g root "$src" /etc/pam.d/hyprlock-fido2
+echo "Installed: /etc/pam.d/hyprlock-fido2"
+echo "Effective stack:"
+grep -vE '^\s*#|^\s*$' /etc/pam.d/hyprlock-fido2 | sed 's/^/  /'
+# hyprlock uses the service named by auth:pam:module and silently falls back to
+# /etc/pam.d/su when that file is absent — so assert the two actually agree.
+echo "hyprlock auth:pam:module:"
+grep -A3 "^auth" ~/.config/hypr/hyprlock.conf | grep "module" | sed 's/^/  /'
+'''
+
+[tasks."bootstrap:udev"]
+description = "Install /etc/udev/rules.d/50-usb-no-autosuspend.rules and re-apply it (asks for sudo)"
+run = '''
+set -e
+src="$(chezmoi source-path)/bootstrap/udev/50-usb-no-autosuspend.rules"
+sudo install -m 644 -o root -g root "$src" /etc/udev/rules.d/50-usb-no-autosuspend.rules
+sudo udevadm control --reload-rules
+# Re-run the rules against already-present devices so no reboot is needed.
+sudo udevadm trigger --subsystem-match=usb --action=change
+echo "Installed: /etc/udev/rules.d/50-usb-no-autosuspend.rules"
+# Report the devices the rule targets; "on" means autosuspend is held off.
+for d in /sys/bus/usb/devices/*-*; do
+  v=$(cat "$d/idVendor" 2>/dev/null) || continue
+  p=$(cat "$d/idProduct" 2>/dev/null) || continue
+  case "$v:$p" in
+    047d:8055|05e3:0610|05e3:0620)
+      printf "  %-12s %s  power/control=%s\n" "$(basename "$d")" "$v:$p" "$(cat "$d/power/control" 2>/dev/null)" ;;
+  esac
+done
+'''
+
 [tasks."bootstrap:dms-session"]
 description = "Install the 'Hyprland (DMS)' wayland session entry (sudo install + disable dms.service in default Hyprland)"
 run = '''
@@ -111,6 +181,56 @@ systemctl --user disable dms.service 2>/dev/null || true
 echo "Installed: /usr/share/wayland-sessions/hyprland-dms.desktop"
 echo "dms.service is now disabled in the default Hyprland session."
 echo "Log out and pick 'Hyprland (DMS)' at GDM to try it."
+'''
+
+[tasks."bootstrap:sleep"]
+description = "Lid close -> suspend-then-hibernate: logind/sleep drop-ins, SELinux labels on the swap subvolume, UPower critical action (asks for sudo)"
+run = '''
+set -e
+src="$(chezmoi source-path)/bootstrap/systemd-sleep"
+
+# What the lid does, and how long before the image is written.
+sudo install -d -m 755 /etc/systemd/logind.conf.d /etc/systemd/sleep.conf.d
+sudo install -m 644 -o root -g root "$src/logind-10-lid-hibernate.conf" /etc/systemd/logind.conf.d/10-lid-hibernate.conf
+sudo install -m 644 -o root -g root "$src/sleep-10-hibernate.conf" /etc/systemd/sleep.conf.d/10-hibernate.conf
+
+# SELinux. `btrfs subvolume create` leaves the subvolume root inode with no
+# security xattr, so /swap came up unlabeled_t, systemd-logind was denied
+# `search` on it, and hibernation failed with a bare "Access denied" and no
+# polkit trace at all. Only the FILE is swapfile_t -- Fedora declares
+# swapfile_t as a file type, so labelling the DIRECTORY swapfile_t just moves
+# the same denial to a new tcontext. The directory needs an ordinary
+# traversable type. These rules live in the SELinux policy store, not in
+# chezmoi, which is why they are reapplied here.
+for spec in "root_t:/swap" "swapfile_t:/swap/swapfile"; do
+  t="${spec%%:*}"; p="${spec#*:}"
+  sudo semanage fcontext -a -t "$t" "$p" 2>/dev/null || sudo semanage fcontext -m -t "$t" "$p"
+done
+sudo restorecon -RFv /swap
+
+# UPower's critical action covers only the awake-and-draining case; UPower does
+# not poll during s2idle, which is why a flat weekend produced no warning.
+# PercentageAction must stay below PercentageCritical (5.0).
+sudo sed -i -E 's/^CriticalPowerAction=.*/CriticalPowerAction=Hibernate/' /etc/UPower/UPower.conf
+sudo sed -i -E 's/^PercentageAction=.*/PercentageAction=4.0/' /etc/UPower/UPower.conf
+
+sudo systemctl reload systemd-logind    # CanReload=yes -- no session loss
+sudo systemctl try-restart upower
+
+lidprop() {
+  busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+    org.freedesktop.login1.Manager "$1" | sed 's/^s //'
+}
+echo
+echo "==> Queried live (mechanism, not just config):"
+printf "  HandleLidSwitch              = %s\n" "$(lidprop HandleLidSwitch)"
+printf "  HandleLidSwitchExternalPower = %s\n" "$(lidprop HandleLidSwitchExternalPower)"
+echo "==> On disk:"
+grep -hE '^(HibernateDelaySec|HibernateOnACPower)=' /etc/systemd/sleep.conf.d/10-hibernate.conf | sed 's/^/  /'
+grep -hE '^(CriticalPowerAction|PercentageAction)=' /etc/UPower/UPower.conf | sed 's/^/  /'
+echo "==> SELinux labels:"
+ls -Zd /swap | sed 's/^/  /'
+sudo ls -Zd /swap/swapfile | sed 's/^/  /'
 '''
 
 [tools]

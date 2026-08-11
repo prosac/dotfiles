@@ -1,0 +1,22 @@
+# /etc/tmpfiles.d/dotsnap.conf
+#
+# Create the snapshot tree that ~/.local/bin/dotsnap writes into. This exists as
+# a tmpfiles.d drop-in rather than a manual `mkdir` step in SETUP.md because the
+# manual step was silently skipped once already: the sudoers rule and the timer
+# were installed, the directory was not, and dotsnap then failed every hour for
+# a long time with a bare `exit 1`. systemd recreates this tree on every boot.
+#
+# `v` creates a btrfs SUBVOLUME (falling back to a plain directory on other
+# filesystems, or when / is not itself a subvolume). A subvolume matters here:
+# btrfs snapshots are not recursive, so a nested subvolume is excluded from
+# snapshots of /home, whereas a plain directory would be copied — every hourly
+# snapshot would then embed an empty-dir skeleton of all the others.
+#
+# hourly/ is user-owned so dotsnap can list it for retention trimming without
+# root; the actual create/delete go through /etc/sudoers.d/dotsnap.
+#
+# Install via:  mise run bootstrap:tmpfiles
+#
+#Type Path                      Mode UID  GID  Age Argument
+v     /home/.snapshots          0755 root root -
+d     /home/.snapshots/hourly   0755 {{ .chezmoi.username }} {{ .chezmoi.username }} -

@@ -1,0 +1,59 @@
+# /etc/pam.d/hyprlock-fido2 — lean auth stack for the hyprlock screen lock.
+#
+# WHY a separate service name instead of editing /etc/pam.d/hyprlock: that file is
+# owned by the hyprlock RPM, while hyprlock reads whatever service
+# `auth:pam:module` names (src/auth/Pam.cpp). An own filename cannot be clobbered
+# by a package update — and if this file ever goes missing, hyprlock falls back to
+# /etc/pam.d/su, i.e. degraded to the old behaviour, never a lockout.
+#
+# WHY not the shipped `auth include login`: `login` pulls in system-auth, whose
+# authselect **sssd** profile appends, after pam_unix:
+#
+#     auth  sufficient  pam_sss.so forward_pass
+#
+# There is no SSSD domain on this machine, so that module only ever prompts for
+# the password a second time and fails. That is the "the FIDO stick is not active
+# until I hit Enter three times" symptom (diagnosed 2026-08-06):
+#
+#   1. locking starts a PAM transaction; pam_u2f arms the key immediately
+#   2. ~31s later the CTAP device timeout lapses and the u2f leg is spent; PAM
+#      falls through to pam_unix's "Password:" — the key is now dead, but the lock
+#      screen still says "touch key"
+#   3. returning minutes later, Enter #1 fails pam_unix, Enter #2 fails pam_sss,
+#      pam_deny ends the transaction, and only then does hyprlock's retry loop
+#      (Pam.cpp:86-105) start a fresh transaction that re-arms the key — so the
+#      touch is the third interaction
+#
+# hyprlock's own duplicate-prompt suppression does not help: the repeated prompt
+# arrives in a separate conv() call, where its `initialPrompt` local is true again
+# (Pam.cpp:20,32). Dropping pam_sss makes one Enter enough. This also drops
+# `pam_faildelay delay=2000000` — a 2s penalty per failed attempt that a lock
+# screen has no use for — plus pam_env/pam_nologin/pam_securetty/pam_selinux,
+# none of which mean anything for unlocking an existing session.
+#
+# The ~31s window itself is NOT fixable here: it is a CTAP timeout in the
+# authenticator, and pam_u2f exposes no timeout option.
+#
+# ORDER: pam_u2f first, so a bare touch unlocks and the key is armed the instant
+# the screen locks. pam_unix is `required` rather than `sufficient` so this stack
+# cannot silently pass, and carries no `nullok` — an empty submission must fail
+# (that failure is what re-arms the key).
+#
+# Nothing is given up relative to the login stack: there is no pam_faillock
+# anywhere in this system's PAM config, and hyprlock only ever calls pam_start /
+# pam_authenticate / pam_end — no account, session or credential phase. The
+# `account` line below is purely defensive, in case a future hyprlock adds
+# pam_acct_mgmt.
+#
+# pam_u2f's own options live in /etc/security/pam_u2f.conf (userverification = 1);
+# see bootstrap/pam/pam_u2f.conf. Options on a module line would override that
+# file, so deliberately none are set here beyond `cue`.
+#
+# Install via:  mise run bootstrap:pam-hyprlock
+# Selected by:  auth { pam { module = hyprlock-fido2 } }  in hyprlock.conf
+# See ~/Documents/docs/fido2-login-latency-power-management.md
+
+auth        sufficient  pam_u2f.so cue
+auth        required    pam_unix.so
+
+account     required    pam_unix.so
