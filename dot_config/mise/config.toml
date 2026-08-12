@@ -184,15 +184,33 @@ echo "Log out and pick 'Hyprland (DMS)' at GDM to try it."
 '''
 
 [tasks."bootstrap:sleep"]
-description = "Lid close -> suspend-then-hibernate: logind/sleep drop-ins, SELinux labels on the swap subvolume, UPower critical action (asks for sudo)"
+description = "Lid close -> plain suspend: logind/sleep drop-ins, zram off, SELinux labels on the swap subvolume, UPower critical action (asks for sudo)"
 run = '''
 set -e
 src="$(chezmoi source-path)/bootstrap/systemd-sleep"
 
-# What the lid does, and how long before the image is written.
+# What the lid does. Plain suspend, no escalation -- see the drop-in header for
+# the 2026-08-12 backpack incident.
 sudo install -d -m 755 /etc/systemd/logind.conf.d /etc/systemd/sleep.conf.d
-sudo install -m 644 -o root -g root "$src/logind-10-lid-hibernate.conf" /etc/systemd/logind.conf.d/10-lid-hibernate.conf
+sudo install -m 644 -o root -g root "$src/logind-10-lid-suspend.conf" /etc/systemd/logind.conf.d/10-lid-suspend.conf
 sudo install -m 644 -o root -g root "$src/sleep-10-hibernate.conf" /etc/systemd/sleep.conf.d/10-hibernate.conf
+
+# The superseded escalating policy. Left behind, this drop-in sorts under the
+# same 10- prefix and would silently restore suspend-then-hibernate on a machine
+# bootstrapped before 2026-08-12.
+sudo rm -f /etc/systemd/logind.conf.d/10-lid-hibernate.conf
+
+# zram off. It gets swap priority 100 against the disk swapfile's -1, so it was
+# first in line for every swap-out -- including the reclaim that hibernation's
+# image preallocation depends on, where swapping into RAM frees no RAM. See the
+# file's own header for the measurements. Tear the live device down BEFORE
+# daemon-reload: the reload drops the generated units, and systemd would be left
+# holding an active unit whose definition no longer exists.
+sudo systemctl stop dev-zram0.swap 2>/dev/null || true
+sudo systemctl stop systemd-zram-setup@zram0.service 2>/dev/null || true
+sudo swapoff /dev/zram0 2>/dev/null || true
+sudo install -m 644 -o root -g root "$src/zram-generator-disable.conf" /etc/systemd/zram-generator.conf
+sudo systemctl daemon-reload
 
 # SELinux. `btrfs subvolume create` leaves the subvolume root inode with no
 # security xattr, so /swap came up unlabeled_t, systemd-logind was denied
@@ -228,6 +246,8 @@ printf "  HandleLidSwitchExternalPower = %s\n" "$(lidprop HandleLidSwitchExterna
 echo "==> On disk:"
 grep -hE '^(HibernateDelaySec|HibernateOnACPower)=' /etc/systemd/sleep.conf.d/10-hibernate.conf | sed 's/^/  /'
 grep -hE '^(CriticalPowerAction|PercentageAction)=' /etc/UPower/UPower.conf | sed 's/^/  /'
+echo "==> Swap topology (the disk swapfile must be the ONLY entry -- no zram):"
+swapon --show | sed 's/^/  /'
 echo "==> SELinux labels:"
 ls -Zd /swap | sed 's/^/  /'
 sudo ls -Zd /swap/swapfile | sed 's/^/  /'

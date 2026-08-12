@@ -111,22 +111,47 @@ so desktop power-profile switching keeps working. `power-profiles-daemon` and
 `tuned-ppd` both provide the virtual `ppd-service`, so exactly one can be
 installed.
 
-## 2c. Suspend-then-hibernate (lid close)
+## 2c. Lid close → plain suspend (+ hibernate prerequisites)
 
 ```sh
 mise run bootstrap:sleep
 ```
 
-Makes lid-close `suspend-then-hibernate` (plain `suspend` on AC), hibernating
-after 60 min on battery, and sets UPower's critical-battery action to
-`Hibernate` at 4%.
+Makes lid-close a plain `suspend` on battery and AC, sets up everything
+hibernation needs (swap subvolume labels, resume args), and sets UPower's
+critical-battery action to `Hibernate` at 4%. Hibernation itself is **manual**:
+`Super+Ctrl+Escape` → `~/.local/bin/hibernate-now`.
 
-⚠️ **This laptop has no deep/S3 state.** `/sys/power/mem_sleep` reads
-`[s2idle]` with no alternative, so a plain suspend keeps RAM powered at ~1 W —
-a flat 67.8 Wh battery in under three days. Three long weekends were lost that
-way (2026-07-23, 2026-07-31, 2026-08-06); each of those boots' journals ends on
-`PM: suspend entry (s2idle)` with no resume line. Hibernation is not a nicety
-here, it is the only thing that makes a closed lid safe.
+⚠️ **Do not make lid-close escalate to hibernate.** It was tried
+(`HandleLidSwitch=suspend-then-hibernate`, 2026-08-11) and reversed the next day.
+On 2026-08-12 the 60-minute timer woke the machine **inside a closed backpack**,
+the hibernate wedged mid-freeze, no image was ever written, and it sat at full
+power for 44 minutes with `tccd` — fan control, which is user space — frozen
+along with everything else. It came out too hot to hold. The structural problem
+is not the wedge: the design wakes a sealed, unattended laptop to run the most
+fragile operation in the kernel with every watchdog frozen and nobody watching.
+Note that hibernate had been tested successfully twice that day, both times from
+an awake desk session — which does **not** exercise the escalation path.
+Full incident: `~/Documents/docs/suspend-then-hibernate-setup.md`.
+
+⚠️ **This also turns zram OFF, and that is deliberate.** zram-generator gives
+zram swap priority 100 against the disk swapfile's -1, so it is first in line
+for every swap-out — including the reclaim that hibernation's image
+preallocation depends on, where swapping into RAM-backed swap frees no RAM.
+Measured on 2026-08-12 with the container workload up: `pswpout 0`, zram DATA
+4 KiB, memory-pressure total 38 µs, 51 GiB available. It was doing nothing, and
+its four real use cases (low RAM, slow storage, no disk swap, SSD write-wear)
+none of them apply to 61 GiB + NVMe + a 64 GiB swapfile. Revert by deleting
+`/etc/systemd/zram-generator.conf` and running `systemctl daemon-reload`.
+Details: `~/Documents/docs/zram-swap-tuning.md`.
+
+⚠️ **This laptop has no deep/S3 state, so a closed lid still goes flat.**
+`/sys/power/mem_sleep` reads `[s2idle]` with no alternative, so a plain suspend
+keeps RAM powered at ~1 W — a flat 67.8 Wh battery in under three days. Three
+long weekends were lost that way (2026-07-23, 2026-07-31, 2026-08-06); each of
+those boots' journals ends on `PM: suspend entry (s2idle)` with no resume line.
+This cost is **accepted**: a flat battery loses unsaved work, a wedged hibernate
+in a bag cooks the hardware. Hibernate deliberately before long storage.
 
 ⚠️ **The swap subvolume needs an SELinux label, and it is not obvious.**
 `btrfs subvolume create` leaves the new subvolume's root inode with no security
