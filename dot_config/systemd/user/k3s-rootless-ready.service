@@ -1,0 +1,32 @@
+# Starts rootless k3s and blocks until the node is genuinely Ready.
+#
+# `k3s-rootless.service` is Type=simple, so `systemctl --user start k3s-rootless` returns while the
+# API server is still coming up — roughly a minute early. Anything that acts on that is racing the
+# cluster, and the symptom is a connection refused from kubectl rather than an honest "not ready".
+#
+# This is what you actually want to start:
+#
+#     systemctl --user start k3s-rootless-ready     # returns when the cluster is usable
+#     systemctl --user stop  k3s-rootless           # stopping the server stops this too
+#
+# Why a separate unit rather than an ExecStartPost= on the server: the server sets TimeoutSec=0 and
+# Restart=always, so a readiness check wired into it would either hang `systemctl start` forever or
+# drive a restart loop on a cluster that is merely slow. A oneshot alongside it can fail honestly
+# and leave a running cluster alone — and other units can order themselves After= this one.
+
+[Unit]
+Description=Wait for rootless k3s to be Ready
+Requires=k3s-rootless.service
+After=k3s-rootless.service
+# Stopping the server makes this meaningless, so let it be stopped with it.
+PartOf=k3s-rootless.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=%h/.local/bin/k3s-wait-ready
+# The script bounds its own wait; this is the backstop if it wedges rather than returning.
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target
