@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Hibernate immediately, with the lock screen saying so.
+
+Plain `systemctl hibernate` gives no feedback: the screen locks, goes black, and
+~25s later the machine is off. That gap is indistinguishable from a hang, which
+matters here because writing the image really does take that long (~24 GB at
+roughly 1.1 GB/s). This paints a message on the lock screen first.
+
+The ordering is the whole point. During hibernation `user.slice` is frozen, so
+nothing in the session can draw and nothing can be told anything — see
+systemd-sleep(8). So the message must be on screen BEFORE sleep begins, and this
+deliberately waits for hyprlock to actually be up rather than firing
+`lock-session` and hoping it wins the race against the freeze.
+
+NB `systemctl hibernate` is called WITHOUT sudo, on purpose. Under sudo the D-Bus
+caller is root, which does not own the active session, so polkit drops from
+`allow_active=yes` to `auth_admin_keep` and the call fails with a bare "Access
+denied". As the session user it needs no authentication at all.
+
+Compositor-agnostic: hyprlock uses ext-session-lock, so this works under both
+Hyprland and niri.
+
+See ~/Documents/docs/suspend-then-hibernate-setup.md
+"""
+
+import os
+import pathlib
+import subprocess
+import sys
+import time
+
+STAMP = "hyprlock-sleep-state"
+LOCK_TIMEOUT_SECONDS = 5.0
+POLL_INTERVAL_SECONDS = 0.1
+# hyprlock evaluates its label commands on startup, so the text is present as
+# soon as the process exists. A short settle covers the first frame.
+PAINT_SETTLE_SECONDS = 0.5
+
+
+def stamp_path() -> pathlib.Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return pathlib.Path(runtime) / STAMP
+
+
+def write_state(state: str) -> None:
+    """Write atomically. The system-sleep hook writes this file as root, so a
+    leftover may not be owned by us — replacing it needs only write permission
+    on the directory, which we always have in our own runtime dir."""
+    target = stamp_path()
+    tmp = target.with_suffix(".tmp")
+    tmp.write_text(f"{state} {int(time.time())}\n")
+    os.replace(tmp, target)
+
+
+def clear_state() -> None:
+    stamp_path().unlink(missing_ok=True)
+
+
+def hyprlock_running() -> bool:
+    for entry in pathlib.Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            if (entry / "comm").read_text().strip() == "hyprlock":
+                return True
+        except OSError:
+            continue  # process exited while we looked
+    return False
+
+
+def main() -> int:
+    write_state("hibernating")
+
+    if not hyprlock_running():
+        subprocess.run(["loginctl", "lock-session"], check=False)
+        deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
+        while not hyprlock_running() and time.monotonic() < deadline:
+            time.sleep(POLL_INTERVAL_SECONDS)
+
+    if hyprlock_running():
+        time.sleep(PAINT_SETTLE_SECONDS)
+    else:
+        # Hibernate anyway — an unlocked hibernate is still what was asked for,
+        # it just happens without the on-screen message.
+        print("hyprlock did not appear; hibernating without the notice", file=sys.stderr)
+
+    result = subprocess.run(["systemctl", "hibernate"], check=False)
+    if result.returncode != 0:
+        # Do not leave the lock screen claiming a hibernation that never began.
+        clear_state()
+        print("hibernate failed; check: journalctl -b 0 | grep 'avc:.*denied.*swap'",
+              file=sys.stderr)
+    return result.returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())
