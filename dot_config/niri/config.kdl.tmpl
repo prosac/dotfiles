@@ -168,6 +168,13 @@ binds {
     Mod+grave { focus-window-previous; }
     Mod+Escape { spawn "loginctl" "lock-session"; }
     Mod+Shift+Escape { spawn "systemctl" "suspend"; }
+    // Packing away for the night or a weekend. The lid only ever suspends
+    // (~1 W, so a closed machine still goes flat in under three days on this
+    // s2idle-only laptop) -- hibernating is a deliberate act, taken while
+    // watching it power off. Deliberately NOT automatic: on 2026-08-12 an
+    // unattended timed hibernate wedged inside a closed backpack and cooked the
+    // machine for 44 minutes.
+    Mod+Ctrl+Escape hotkey-overlay-title="Hibernate (packing away)" { spawn-sh "{{ .chezmoi.homeDir }}/.local/bin/hibernate-now"; }
     Mod+Shift+T hotkey-overlay-title="Toggle color scheme" { spawn-sh "{{ .chezmoi.homeDir }}/.local/bin/toggle-color-scheme"; }
     Mod+G hotkey-overlay-title="Open project (banner)" { spawn-sh "{{ .chezmoi.homeDir }}/.local/bin/term-project"; }
     Mod+Shift+E { quit; }
