@@ -1,0 +1,66 @@
+# k3s (rootless) — a single-node Kubernetes owned entirely by this user.
+#
+# Adapted from upstream's k3s-rootless.service. Deliberately NOT enabled at boot: it costs ~1.5 GiB
+# idle, so it is started when wanted and stopped after. Full background, including the two
+# persistent root actions this depends on, is in ~/Documents/docs/k3s-local-setup.md.
+#
+# Three deviations from upstream, all deliberate:
+#
+# 1. `%h/.local/bin/k3s` — the binary lives under $HOME because the whole point is a cluster that
+#    needs no root to run or upgrade. `%h` rather than a literal path because this file is managed
+#    by chezmoi, whose source repo is public.
+# 2. `--disable=traefik --disable=servicelb` — nothing here needs an ingress controller or a
+#    LoadBalancer implementation, and both cost memory on every start.
+# 3. `ExecStartPre=` for the cpuset delegation. That step is NOT persistent, so without this it is
+#    a manual one-liner after every reboot and its absence looks like a k3s bug. See the script.
+#
+# Readiness is a separate unit: `Type=simple` means systemd reports this active the moment the
+# process forks, long before the API server answers. Start `k3s-rootless-ready.service` instead
+# when you need a cluster you can actually use.
+#
+# Installing this file system-wide (/etc/systemd/...) is explicitly unsupported by upstream.
+#
+# Troubleshooting:
+# - `systemctl --user status k3s-rootless`
+# - `journalctl --user -f -u k3s-rootless`
+# - https://rootlesscontaine.rs/
+
+[Unit]
+Description=k3s (Rootless)
+
+[Service]
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# NOTE: Don't try to run `k3s server --rootless` on a terminal, as it doesn't enable cgroup v2
+# delegation. If you really need to, prepend `systemd-run --user -p Delegate=yes --tty`.
+ExecStartPre=%h/.local/bin/k3s-cgroup-prepare
+ExecStart=%h/.local/bin/k3s server --rootless --snapshotter=fuse-overlayfs --disable=traefik --disable=servicelb --write-kubeconfig-mode=0600
+ExecReload=/bin/kill -s HUP $MAINPID
+# A guard, not a verified fix — recorded honestly because the difference matters to whoever reads
+# this next. `systemctl --user stop` was twice observed leaving this unit in `failed` with
+# ExecMainStatus=1, i.e. k3s exiting 1 on SIGTERM. Since adding this line the exit code has been 0
+# on every stop (five, including one with all kube-system pods settled), so the original condition
+# has NOT been reproduced and this line cannot be credited with fixing it. It is kept because the
+# failure mode was real when seen and the cost of the guard is small: a unit that sits in `failed`
+# after every deliberate stop is one nobody reads when it goes red for a real reason.
+#
+# It does not weaken the crash safety net. `Restart=always` restarts on any exit status regardless
+# of what counts as success here, so a k3s that genuinely cannot stay up still burns through
+# StartLimitBurst and lands in failed — with Result=start-limit-hit, which is distinguishable from
+# a clean stop. What it can hide is a single spontaneous exit-1 that then restarts fine; that stays
+# visible in the journal.
+SuccessExitStatus=1
+TimeoutSec=0
+RestartSec=2
+Restart=always
+StartLimitBurst=3
+StartLimitInterval=60s
+LimitNOFILE=infinity
+LimitNPROC=infinity
+LimitCORE=infinity
+TasksMax=infinity
+Delegate=yes
+Type=simple
+KillMode=mixed
+
+[Install]
+WantedBy=default.target

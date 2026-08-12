@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Delegate the `cpuset` controller to this user manager's `app.slice`, for rootless k3s.
+
+Rootless k3s refuses to start without `cpuset` reaching the cgroup its unit runs in, failing with
+`failed to find cpuset cgroup (v2)`. Two of the three prerequisites are persistent root actions
+(see ~/Documents/docs/k3s-local-setup.md); this one is **not**. Enabling a controller in
+`cgroup.subtree_control` lives only in memory, so it is lost on every reboot and re-login — which
+is exactly the sort of step that gets forgotten and then reads as a k3s bug rather than a missing
+one-liner.
+
+Run from `k3s-rootless.service`'s `ExecStartPre=` so it cannot be forgotten. Idempotent and silent
+when there is nothing to do; loud and specific when the persistent half of the setup is missing,
+because "permission denied" on a cgroup file is not a diagnosis anyone should have to make twice.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+CONTROLLER = "cpuset"
+
+DELEGATE_DROP_IN = "/etc/systemd/system/user@.service.d/delegate.conf"
+DELEGATE_HINT = f"""\
+{CONTROLLER} is not among the controllers this user manager may hand to its children.
+
+That is the persistent, root-owned half of the setup. Create {DELEGATE_DROP_IN}:
+
+    [Service]
+    Delegate=cpu cpuset io memory pids
+
+then `sudo systemctl daemon-reload`, and enable it down the live hierarchy once (see
+~/Documents/docs/k3s-local-setup.md) so it takes effect without logging out."""
+
+
+def app_slice(uid: int) -> Path:
+    """The cgroup `k3s-rootless.service` itself runs under."""
+    return Path(
+        f"/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service/app.slice"
+    )
+
+
+def controllers(cgroup: Path, filename: str) -> set[str]:
+    try:
+        return set((cgroup / filename).read_text().split())
+    except OSError as exc:
+        sys.exit(f"k3s-cgroup-prepare: cannot read {cgroup / filename}: {exc}")
+
+
+def main() -> None:
+    cgroup = app_slice(os.getuid())
+    if not cgroup.is_dir():
+        sys.exit(f"k3s-cgroup-prepare: {cgroup} does not exist — is this a cgroup v2 host?")
+
+    if CONTROLLER in controllers(cgroup, "cgroup.subtree_control"):
+        return  # Already delegated. The normal case within a single boot.
+
+    if CONTROLLER not in controllers(cgroup, "cgroup.controllers"):
+        sys.exit(f"k3s-cgroup-prepare: {DELEGATE_HINT}")
+
+    target = cgroup / "cgroup.subtree_control"
+    try:
+        target.write_text(f"+{CONTROLLER}")
+    except OSError as exc:
+        sys.exit(f"k3s-cgroup-prepare: writing +{CONTROLLER} to {target} failed: {exc}")
+    print(f"k3s-cgroup-prepare: delegated {CONTROLLER} to {cgroup}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
