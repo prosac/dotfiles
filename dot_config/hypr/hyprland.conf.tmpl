@@ -124,6 +124,24 @@ env = HYPRCURSOR_SIZE,24
 # since Hyprland is started by GDM rather than by systemd.
 env = QT_QPA_PLATFORMTHEME,gtk3
 
+# NB: a DisplayLink dock (Dell D6000) needs an AQ_DRM_DEVICES line here so
+# aquamarine enumerates the evdi DRM nodes — but ONLY set it together with
+# loading evdi at boot, and test it before relying on it. Deliberately left
+# out: the dock's monitor works without it (Hyprland hot-adds the evdi device
+# via udev), and evdi takes card0, so a wrong value risks a broken session at
+# login.
+#
+# ⚠️ The DisplayLink stack was REMOVED on 2026-08-12 — `modinfo evdi` now reports
+# no such module, so nothing here is live. It went because evdi was the one
+# variable unique to the boot that deadlocked the compositor, and a resident
+# evdi holding imported amdgpu buffers could not be ruled out. Note that
+# `rm /etc/modules-load.d/evdi.conf` does NOT unload a running module — that is
+# what made the question unanswerable at the time.
+#
+# Revival recipe (and the evdi caveat above, which still applies) is kept in
+# ~/Documents/docs/displaylink-dock-d6000-hyprland.md
+# Why it was removed: ~/Documents/docs/hyprland-freeze-atomic-commit-deadlock.md
+
 
 #####################
 ### LOOK AND FEEL ###
