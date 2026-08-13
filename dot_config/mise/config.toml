@@ -166,6 +166,42 @@ for d in /sys/bus/usb/devices/*-*; do
 done
 '''
 
+[tasks."bootstrap:opentabletdriver"]
+description = "Install /etc/udev/rules.d/70-opentabletdriver.rules so OpenTabletDriver can open the tablet (asks for sudo)"
+run = '''
+set -e
+src="$(chezmoi source-path)/bootstrap/udev/70-opentabletdriver.rules"
+# The number must stay below 73 — see the header in the rules file. Drop the
+# 99-* name this was first (wrongly) installed under so the two can't coexist.
+sudo rm -f /etc/udev/rules.d/99-opentabletdriver.rules
+sudo install -m 644 -o root -g root "$src" /etc/udev/rules.d/70-opentabletdriver.rules
+sudo udevadm control --reload-rules
+# Re-run against already-present devices so no replug/reboot is needed. hidraw
+# carries the access ACL, input carries the LIBINPUT_IGNORE_DEVICE handover.
+sudo udevadm trigger --subsystem-match=hidraw --action=change
+sudo udevadm trigger --subsystem-match=usb --action=change
+sudo udevadm trigger --subsystem-match=input --action=change
+echo "Installed: /etc/udev/rules.d/70-opentabletdriver.rules"
+
+# Verify with getfacl, NOT with `udevadm info | grep TAGS`: a too-late rules
+# file still shows TAGS=:uaccess: while granting nothing, so the tag is not
+# evidence. The ACL naming $USER is the only proof the daemon can open it.
+echo "Wacom HID nodes:"
+found=0
+for h in /sys/class/hidraw/hidraw*; do
+  dev="/dev/$(basename "$h")"
+  v=$(cat "$h/device/../../idVendor" 2>/dev/null) || continue
+  [ "$v" = "056a" ] || continue
+  found=1
+  if getfacl -p "$dev" 2>/dev/null | grep -q "^user:$USER:rw"; then
+    printf "  %-14s ACL for %s: yes\n" "$dev" "$USER"
+  else
+    printf "  %-14s ACL for %s: NO — rule did not apply\n" "$dev" "$USER"
+  fi
+done
+[ "$found" = 1 ] || echo "  (no Wacom tablet currently connected)"
+'''
+
 [tasks."bootstrap:dms-session"]
 description = "Install the 'Hyprland (DMS)' wayland session entry (sudo install + disable dms.service in default Hyprland)"
 run = '''

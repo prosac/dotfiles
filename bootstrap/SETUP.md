@@ -98,6 +98,46 @@ laptop's charge limiting anyway — that lives at
 `/sys/devices/platform/tuxedo_keyboard/charging_profile`, not the standard sysfs,
 and TUXEDO Control Center (`tccd`) owns it.
 
+## 2c. Wacom tablet / OpenTabletDriver
+
+```sh
+mise run bootstrap:opentabletdriver
+```
+
+Installs `/etc/udev/rules.d/70-opentabletdriver.rules` and re-triggers it, then
+reports whether each Wacom HID node actually carries an ACL for `$USER`.
+
+⚠️ **The `70-` prefix is load-bearing — never renumber this above 73.**
+`/usr/lib/udev/rules.d/73-seat-late.rules` holds the only line that converts a
+`uaccess` tag into a real ACL (`TAG=="uaccess", … RUN{builtin}+="uaccess"`).
+Rules run in filename order, so a `99-*` file sets the tag after the builtin
+that consumes it has already run. **The failure looks like success:**
+`udevadm info` cheerfully reports `TAGS=:uaccess:seat:` on the device while
+`getfacl` shows no user entry and the node stays `root:root 0600`. Upstream
+OTD ships its rules as `99-*`, which walks straight into this. Always verify
+with `getfacl /dev/hidraw*`, never with `TAGS`.
+
+⚠️ **The Flathub OpenTabletDriver ships no udev rules** — its tree contains zero
+`.rules` files, and Fedora has no OTD package to supply them. Without this rule
+the daemon runs unprivileged against a `root:root 0600` `/dev/hidraw*` node,
+cannot open it, and the GUI reports *no tablet detected* while the tablet keeps
+working normally through the kernel `wacom` driver. That split — hardware works,
+app sees nothing — is the whole symptom. The Flatpak's `devices=all` is a red
+herring: it lets the sandbox reach `/dev`, but cannot grant permissions the user
+does not already hold.
+
+The rule does two things. It tags Wacom hidraw + USB nodes `uaccess` so the seat
+user gets an ACL, and it sets `LIBINPUT_IGNORE_DEVICE=1` on the Wacom *input*
+devices so the kernel driver's events stop reaching the compositor. The second
+half is required because OTD never unbinds the kernel driver — it reads the same
+device in parallel and emits its own pointer via `/dev/uinput`, so without the
+mute both drivers move the cursor.
+
+⚠️ **Consequence: the tablet is inert unless the OTD daemon runs.** That is what
+`opentabletdriver.service` (user unit, `graphical-session.target`) is for; it is
+enabled by `run_onchange_after_enable-session-services.sh` whenever the Flatpak
+is installed. If the pen ever goes dead, check that service first.
+
 Power management stack on Fedora 43 — pick the native one and only that one:
 
 ```sh

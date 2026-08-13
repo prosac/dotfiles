@@ -354,6 +354,24 @@ input {
     touchpad {
         natural_scroll = true
     }
+
+    # Wacom Intuos BT M via OpenTabletDriver (see bootstrap/SETUP.md § 2c).
+    # Binds the pen to the laptop panel; without it Hyprland spreads the pen
+    # across the whole desktop layout, which is both distorted and partly dead
+    # (the layout is L-shaped, so the area below the ultrawide's right half maps
+    # to no screen at all).
+    #
+    # ⚠️  This MUST live here as the global input:tablet:output. Setting
+    # `output = eDP-1` inside a `device { name = opentabletdriver-... }` block
+    # does NOT work on 0.56 — it is accepted with an empty `hyprctl
+    # configerrors` and then silently ignored. Only the pen behaves; nothing
+    # reports a problem. Verify with `hyprctl getoption input:tablet:output`
+    # (must say `set: true`), never by the absence of config errors.
+    # There is only one tablet — the kernel wacom device is muted by
+    # /etc/udev/rules.d/70-opentabletdriver.rules — so global is also correct.
+    tablet {
+        output = eDP-1
+    }
 }
 
 {{ if eq .machineClass "laptop" -}}

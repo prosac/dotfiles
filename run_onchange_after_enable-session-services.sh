@@ -30,6 +30,16 @@ enable_if_exists() {
 
 enable_if_exists kando.service kando
 enable_if_exists wayland-noti.service noti
+
+# opentabletdriver.service drives the Wacom tablet. The kernel wacom driver is
+# muted for Wacom devices by /etc/udev/rules.d/99-opentabletdriver.rules
+# (mise run bootstrap:opentabletdriver), so without this daemon the tablet is
+# inert — enable it whenever the Flatpak is present.
+if flatpak info net.opentabletdriver.OpenTabletDriver >/dev/null 2>&1; then
+  systemctl --user enable opentabletdriver.service
+else
+  echo "  opentabletdriver.service: skipped (Flatpak not installed)"
+fi
 # swayosd.service drives the brightness/volume media-key OSD (swayosd-client →
 # swayosd-server). Shared across Hyprland + niri via the unit's ConditionEnvironment.
 enable_if_exists swayosd.service swayosd-server
