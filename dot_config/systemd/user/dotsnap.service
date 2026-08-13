@@ -1,6 +1,9 @@
 [Unit]
 Description=Hourly btrfs snapshot of /home for dotfile review
 ConditionPathIsMountPoint=/home
+# Surface failures instead of letting them pile up in the journal unseen — this
+# unit failed hourly for a long time (missing /home/.snapshots) without a peep.
+OnFailure=notify-failure@%n.service
 
 [Service]
 Type=oneshot
