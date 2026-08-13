@@ -241,8 +241,27 @@ animations {
 
 # See https://wiki.hyprland.org/Configuring/Dwindle-Layout/ for more
 dwindle {
-    pseudotile = true # Master switch for pseudotiling. Enabling is bound to mainMod + P in the keybinds section below
+    # NB: `pseudotile` was removed in Hyprland 0.56 — pseudotiling no longer has
+    # a master switch, the `pseudo` dispatcher (mainMod + P below) just works.
     preserve_split = true # You probably want this
+
+    # Keep new windows splitting side-by-side on the ultrawide.
+    #
+    # Dwindle decides the split from the layout box: it stacks top/bottom as soon
+    # as `box.w <= box.h * split_width_multiplier`. Since 0.56 reworked the layout
+    # engine, gaps_out (including a per-workspace `gapsout` rule) is subtracted
+    # from that box *before* the decision — it used to be applied per-window
+    # afterwards, leaving the box full-width. So reading-column.py's
+    # `gapsout: 24 1095 24 1095` makes the box ~1250x1366 on the 3440x1440
+    # screen — taller than wide — and the second window stacked full-width /
+    # half-height instead of splitting left/right.
+    #
+    # 0.85 keeps the 1250px auto column (ratio ~0.91) on the side-by-side side of
+    # the threshold. preserve_split=true freezes the orientation chosen at open
+    # time, so this is decided once per pair. The narrow 800px Super+C reading
+    # column (ratio ~0.59) is still below the threshold and will stack — fix that
+    # case by hand with the togglesplit bind below.
+    split_width_multiplier = 0.85
 }
 
 # See https://wiki.hyprland.org/Configuring/Master-Layout/ for more
@@ -300,7 +319,6 @@ device {
     sensitivity = -0.5
 }
 
-
 {{ end -}}
 ###################
 ### KEYBINDINGS ###
@@ -342,6 +360,15 @@ bind = $mainMod, L, movefocus, r
 
 # Switch between current and last focused window
 bind = $mainMod, grave, focuscurrentorlast
+
+# Split orientation escape hatch. Super+O flips the focused pair between
+# side-by-side and stacked, Super+SHIFT+O swaps the two windows within the split.
+# NB: the standalone `togglesplit` dispatcher is gone in 0.56 (like `pseudotile`)
+# — it lives on as `layoutmsg togglesplit`, so a bare `bind = ..., togglesplit`
+# is silently dead config. See also `layoutmsg preselect l|r|u|d`, which aims the
+# *next* window (one-shot unless dwindle:permanent_direction_override is on).
+bind = $mainMod, O, layoutmsg, togglesplit
+bind = $mainMod SHIFT, O, layoutmsg, swapsplit
 
 # Swap window with neighbor
 bind = $mainMod SHIFT, H, swapwindow, l
@@ -441,36 +468,45 @@ bindl = , XF86AudioPrev, exec, playerctl previous
 # Workspace rules - configured dynamically via setup_workspaces.sh
 # based on connected monitors (HDMI-A-1 presence)
 
-# Example windowrule v1
-# windowrule = float, ^(kitty)$
-
-# Example windowrule v2
-# windowrulev2 = float,class:^(kitty)$,title:^(kitty)$
+# Window rule syntax (Hyprland >= 0.56):
+#   windowrule = <effect> <value>, match:<prop> <value>, ...
+# `windowrulev2` is GONE — its handler only raises a deprecation error, so any
+# such rule is silently never applied. Three things changed at once:
+#   - matchers are `match:prop value` (prefix + space), not `prop:value`
+#   - EVERY field needs a value, so bare `float` / `pin` must be `float true`
+#   - effects are snake_case: suppressevent→suppress_event, nofocus→no_focus,
+#     noblur→no_blur, noanim→no_anim, noinitialfocus→no_initial_focus,
+#     and noborder is gone entirely → use `border_size 0`
+# Example:
+# windowrule = float true, match:class ^(kitty)$, match:title ^(kitty)$
 
 # Ignore maximize requests from apps. You'll probably like this.
-windowrulev2 = suppressevent maximize, class:.*
+windowrule = suppress_event maximize, match:class .*
 
 # Fix some dragging issues with XWayland
-windowrulev2 = nofocus,class:^$,title:^$,xwayland:1,floating:1,fullscreen:0,pinned:0
+windowrule = no_focus true, match:class ^$, match:title ^$, match:xwayland true, match:float true, match:fullscreen false, match:pin false
 
 # Chromium notification popups — no app_id or title set by the browser
-windowrulev2 = float,   class:^$,title:^$,xwayland:0
-windowrulev2 = pin,     class:^$,title:^$,xwayland:0
-windowrulev2 = move 100%-w-12 40, class:^$,title:^$,xwayland:0
-windowrulev2 = nofocus, class:^$,title:^$,xwayland:0
+windowrule = float true, match:class ^$, match:title ^$, match:xwayland false
+windowrule = pin true, match:class ^$, match:title ^$, match:xwayland false
+windowrule = move 100%-w-12 40, match:class ^$, match:title ^$, match:xwayland false
+windowrule = no_focus true, match:class ^$, match:title ^$, match:xwayland false
 
 # Kando radial menu — force fit to focused monitor (cursor's monitor via follow_mouse)
-windowrulev2 = float, class:^(menu\.kando\.Kando)$,title:^(Kando Menu)$
-windowrulev2 = size 100% 100%, class:^(menu\.kando\.Kando)$,title:^(Kando Menu)$
-windowrulev2 = move 0 0, class:^(menu\.kando\.Kando)$,title:^(Kando Menu)$
-windowrulev2 = pin, class:^(menu\.kando\.Kando)$,title:^(Kando Menu)$
-windowrulev2 = noborder, class:^(menu\.kando\.Kando)$,title:^(Kando Menu)$
-windowrulev2 = noblur, class:^(menu\.kando\.Kando)$,title:^(Kando Menu)$
-windowrulev2 = noanim, class:^(menu\.kando\.Kando)$,title:^(Kando Menu)$
-windowrulev2 = noinitialfocus, class:^(menu\.kando\.Kando)$,title:^(Kando Menu)$
-windowrulev2 = rounding 0, class:^(menu\.kando\.Kando)$,title:^(Kando Menu)$
+windowrule = float true, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Menu)$
+windowrule = size 100% 100%, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Menu)$
+windowrule = move 0 0, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Menu)$
+windowrule = pin true, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Menu)$
+windowrule = border_size 0, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Menu)$
+windowrule = no_blur true, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Menu)$
+windowrule = no_anim true, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Menu)$
+windowrule = no_initial_focus true, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Menu)$
+windowrule = rounding 0, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Menu)$
 
-# Kando settings on HDMI: half-size and centered
-windowrulev2 = float, class:^(menu\.kando\.Kando)$,title:^(Kando Settings)$,monitor:1
-windowrulev2 = size 60% 70%, class:^(menu\.kando\.Kando)$,title:^(Kando Settings)$,monitor:1
-windowrulev2 = center, class:^(menu\.kando\.Kando)$,title:^(Kando Settings)$,monitor:1
+# Kando settings: half-size and centered.
+# NB: was `monitor:1` (HDMI only) — 0.56 removed the `monitor:` MATCHER (monitor
+# is now only an effect), so this applies on every monitor. size is relative to
+# the monitor, so the result is the same shape on the internal display too.
+windowrule = float true, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Settings)$
+windowrule = size 60% 70%, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Settings)$
+windowrule = center true, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Settings)$
