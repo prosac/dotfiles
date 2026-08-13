@@ -74,6 +74,23 @@ exec-once = ~/.config/hypr/monitor-hotplug.py
 # See the reading-column note in ~/Documents/docs/.
 exec-once = ~/.config/hypr/reading-column.py
 
+# hyprtasking — workspace overview plugin (Super+Tab). Built by hand rather than
+# via hyprpm: upstream only supports Hyprland up to v0.56.0, so this is the
+# unmerged PR #123 fix for 0.56.1 (raybbian/hyprtasking#123, fork yerlotic, 2
+# commits = +4/-4 porting getWorkspaceByID/createNewWorkspace to the new
+# State::workspaceState() API). Source: ~/.local/src/hyprtasking @ ee5b4c6688.
+#
+# ⚠️ Hyprland plugins are ABI-pinned to the exact compositor build. EVERY Hyprland
+# update needs `~/.local/bin/hyprtasking-rebuild` (rebuild against the new
+# headers) or this load fails and the overview is silently gone — hence the
+# fallback notification. Swap back to `hyprpm` once #123 merges upstream.
+#
+# ⚠️ The success test is `grep -q '^ok'`, NOT the exit code: `hyprctl plugin load`
+# prints "could not be loaded: …" and still exits 0, so a plain `||` fallback
+# would never fire and the failure would stay silent — the very thing it guards.
+# See ~/Documents/docs/hyprland-hyprtasking-plugin.md
+exec-once = hyprctl plugin load ~/.local/src/hyprtasking/build/libhyprtasking.so | grep -q '^ok' || hyprctl notify -1 10000 "rgb(ff8800)" "hyprtasking failed to load — run hyprtasking-rebuild"
+
 # swayosd-server runs as a systemd user service (swayosd.service), bound to
 # graphical-session.target, so it is not started here.
 
@@ -269,6 +286,23 @@ master {
     new_status = master
 }
 
+# hyprtasking (workspace overview, Super+Tab — see the exec-once above).
+# `plugin` is a hyprlang special category registered with missing-key tolerance
+# (legacy/ConfigManager.cpp: addSpecialCategory("plugin", {nullptr, true})), so
+# this block is inert rather than an error during the window between config parse
+# and the plugin actually loading from exec-once.
+plugin {
+    hyprtasking {
+        layout = grid
+
+        # Type a workspace's label (1-9, 0, then a-z) to jump straight to it,
+        # instead of aiming with the mouse.
+        jump {
+            enabled = true
+        }
+    }
+}
+
 # https://wiki.hyprland.org/Configuring/Variables/#misc
 misc {
     force_default_wallpaper = -1 # Set to 0 or 1 to disable the anime mascot wallpapers
@@ -331,7 +365,18 @@ $mainMod = SUPER # Sets "Windows" key as main modifier
 bind = $mainMod, Return, exec, $terminal
 bind = $mainMod, D, exec, $menu
 bind = $mainMod, Space, exec, $menu       # macOS Spotlight-style launcher trigger
-bind = $mainMod, Tab, exec, kando -m "Example Menu"
+# Workspace overview (hyprtasking): Tab alone = the monitor under the cursor,
+# +SHIFT = every monitor at once. Same key closes it again. Inside the overview:
+# right-click switches, left-drag moves a window, 1-9/0/a-z jump by label.
+# NB: no `, escape` bind (which the plugin's README suggests) — a bound key is
+# consumed by the compositor whether or not the dispatcher acts, so a global
+# Escape bind would stop emacs/evil and terminals from ever seeing Escape.
+bind = $mainMod, Tab, hyprtasking:toggle, cursor
+bind = $mainMod SHIFT, Tab, hyprtasking:toggle, all
+
+# kando pie menu — moved off Super+Tab for hyprtasking; keeps the launchers
+# together on Space ($menu on Super+Space, kando on Super+SHIFT+Space).
+bind = $mainMod SHIFT, Space, exec, kando -m "Example Menu"
 bind = $mainMod, Q, killactive,
 bind = $mainMod SHIFT, E, exit,
 bind = $mainMod, E, exec, $fileManager
