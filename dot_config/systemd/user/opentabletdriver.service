@@ -1,0 +1,34 @@
+[Unit]
+Description=OpenTabletDriver daemon (tablet input)
+Documentation=https://opentabletdriver.net/
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+ConditionEnvironment=|XDG_CURRENT_DESKTOP=Hyprland
+ConditionEnvironment=|XDG_CURRENT_DESKTOP=niri
+
+[Service]
+Type=simple
+# start-otd.sh --daemon-only sets LD_LIBRARY_PATH=/app/lib64 and then execs
+# OpenTabletDriver.Daemon; calling the daemon binary directly skips that.
+# The GUI (flatpak run net.opentabletdriver.OpenTabletDriver) attaches to
+# whatever daemon is already running, so launching it does not start a second.
+#
+# ⚠️  --die-with-parent and the ExecStopPost are BOTH required, and neither is
+# optional politeness. `flatpak run` asks systemd over D-Bus for its own
+# transient app-flatpak-*.scope and migrates the app into it, so the daemon
+# does NOT stay in this service's cgroup. Without these lines `systemctl
+# restart` kills only the wrapper here while the real daemon survives in its
+# scope, and the next start adds a SECOND one. The symptom is nasty: the
+# surviving daemon keeps its uinput devices (same /dev/input/eventNN) with the
+# OLD geometry, so config changes appear to be silently ignored no matter how
+# many times you restart. Verify a restart worked by checking that the OTD
+# event node numbers in /proc/bus/input/devices actually changed.
+ExecStart=/usr/bin/flatpak run --die-with-parent --command=start-otd.sh net.opentabletdriver.OpenTabletDriver --daemon-only
+ExecStopPost=-/usr/bin/flatpak kill net.opentabletdriver.OpenTabletDriver
+Restart=on-failure
+RestartSec=2
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target

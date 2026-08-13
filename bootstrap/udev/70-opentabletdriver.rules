@@ -1,0 +1,49 @@
+# OpenTabletDriver — device access + kernel-driver handover
+#
+# Install with: mise run bootstrap:opentabletdriver
+#
+# The Flathub build of OpenTabletDriver (net.opentabletdriver.OpenTabletDriver)
+# ships NO udev rules of its own — the Flatpak tree contains zero .rules files —
+# and Fedora has no OTD package to supply them. Without this file the daemon
+# runs unprivileged against a root:root 0600 /dev/hidraw* node, fails to open
+# it, and the GUI reports "no tablet detected" even though the tablet works
+# fine through the kernel's wacom driver. The Flatpak's `devices=all` does not
+# help: it lets the sandbox reach /dev, but cannot grant permissions the user
+# does not already hold.
+#
+# Scoped to Wacom's vendor ID (056a) so any Wacom tablet is covered, not just
+# the Intuos BT M (056a:0378) this was written for.
+#
+# ⚠️  THE FILENAME NUMBER IS LOAD-BEARING — DO NOT RENAME THIS TO 99-*.
+#     /usr/lib/udev/rules.d/73-seat-late.rules holds the only line that turns a
+#     uaccess tag into an actual ACL:
+#         TAG=="uaccess", ENV{MAJOR}!="", RUN{builtin}+="uaccess"
+#     Rules files run in filename order, so anything numbered above 73 sets the
+#     tag *after* the builtin that consumes it has already run. The failure is
+#     silent and looks like success: `udevadm info` shows TAGS=:uaccess:seat:
+#     on the device, but `getfacl` shows no user entry and the node stays
+#     root:root 0600. Upstream OTD's own rules file ships as 99-*, which hits
+#     exactly this on systemd. Verify with getfacl, never with TAGS.
+
+# ---------------------------------------------------------------------------
+# 1. Access — hand the raw HID and USB nodes to the logged-in seat user so the
+#    unprivileged OTD daemon can open them. `uaccess` grants an ACL to whoever
+#    holds the active local session, which is what the Flatpak runs as.
+# ---------------------------------------------------------------------------
+KERNEL=="hidraw*", ATTRS{idVendor}=="056a", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="056a", TAG+="uaccess"
+
+# ---------------------------------------------------------------------------
+# 2. Handover — stop the kernel wacom driver's events from reaching the
+#    compositor. OTD does not unbind the kernel driver; it reads the same
+#    device in parallel and emits its own pointer through /dev/uinput. Without
+#    this line BOTH drivers move the cursor and the pen fights itself.
+#
+#    SUBSYSTEMS=="usb" is load-bearing: it pins the match to the physical USB
+#    device, so OTD's own uinput-created virtual pointer/tablet (which has no
+#    USB parent) can never match this rule and silence itself.
+#
+#    ⚠️  Consequence: the tablet is inert unless the OTD daemon is running.
+#    That is what opentabletdriver.service (user, graphical-session) is for.
+# ---------------------------------------------------------------------------
+SUBSYSTEM=="input", SUBSYSTEMS=="usb", ATTRS{idVendor}=="056a", ENV{LIBINPUT_IGNORE_DEVICE}="1"
