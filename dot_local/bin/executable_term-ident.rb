@@ -97,24 +97,27 @@ IDLE_ALPHA = 0.85
 IDLE_ALPHA_INACTIVE = 0.72
 
 # Set Hyprland window props. NB: for color props, -1 restores the global
-# default; for alpha, -1 is taken literally and clamps to 0 (invisible!), so
+# default; for opacity, -1 is taken literally and clamps to 0 (invisible!), so
 # opacity must always be reset with an explicit 1, never -1.
+#
+# Prop names are the Hyprland >=0.56 snake_case ones (0.55 and earlier used
+# activebordercolor / alpha / alphainactive — no aliases exist either way).
 def setprops(addr, props)
   props.each { |prop, val| run("hyprctl", "dispatch", "setprop", "address:#{addr}", prop, val.to_s) }
 end
 
-# In a project: colored border + fully opaque (alpha explicitly 1).
+# In a project: colored border + fully opaque (opacity explicitly 1).
 def apply_window(active, inactive, pid = nil)
   addr = ghostty_address(pid) or return
-  setprops(addr, "activebordercolor" => active, "inactivebordercolor" => inactive,
-                 "alpha" => 1, "alphainactive" => 1)
+  setprops(addr, "active_border_color" => active, "inactive_border_color" => inactive,
+                 "opacity" => 1, "opacity_inactive" => 1)
 end
 
 # Neutral state: default border + slight transparency.
 def reset_window
   addr = ghostty_address or return
-  setprops(addr, "activebordercolor" => -1, "inactivebordercolor" => -1,
-                 "alpha" => IDLE_ALPHA, "alphainactive" => IDLE_ALPHA_INACTIVE)
+  setprops(addr, "active_border_color" => -1, "inactive_border_color" => -1,
+                 "opacity" => IDLE_ALPHA, "opacity_inactive" => IDLE_ALPHA_INACTIVE)
 end
 
 def write_tty(seq, tty = nil)

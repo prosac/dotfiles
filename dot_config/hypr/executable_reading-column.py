@@ -23,6 +23,15 @@ it would leave a negative width on the narrow laptop. Live per-workspace gaps
 are read back from `hyprctl workspacerules`, so state survives a daemon restart
 and we only call hyprctl when something actually needs to change.
 
+⚠️ Since Hyprland 0.56 these gaps are subtracted from the work area handed to the
+layout (src/layout/space/Space.cpp), not applied per-window afterwards. So a
+column makes dwindle see a NARROW, TALL screen and stack the next window
+top/bottom instead of splitting left/right — `dwindle:split_width_multiplier`
+(0.85 in hyprland.conf) is what keeps the AUTO column side-by-side, and it only
+holds while AUTO_WIDTH stays close to the monitor height. Changing AUTO_WIDTH or
+READING_WIDTH means re-checking that ratio. See §8 of
+~/Documents/docs/hyprland-copr-migration.md.
+
 Launched from hyprland.conf as `exec-once` (IPC/hyprctl-coupled glue lives in
 exec-once, mirroring monitor-hotplug.py — not a systemd user service).
 Event format on socket2 is "<event>>><payload>" — see https://wiki.hypr.land/IPC/
