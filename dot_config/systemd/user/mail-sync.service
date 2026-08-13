@@ -2,6 +2,8 @@
 Description=Sync Gmail via lieer (notmuch + 1Password-backed OAuth)
 Documentation=file://%h/Documents/docs/notmuch-gmailieer-setup.md
 After=graphical-session.target
+# Don't let a broken sync fail silently for weeks. See notify-failure@.service.
+OnFailure=notify-failure@%n.service
 
 [Service]
 Type=oneshot

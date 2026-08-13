@@ -1,0 +1,17 @@
+[Unit]
+# Reusable desktop notification for a failed user unit.
+# Wire it up from the unit that may fail:
+#     [Unit]
+#     OnFailure=notify-failure@%n.service
+# %n expands to the full unit name, so %i here is e.g. "dotsnap.service".
+Description=Desktop notification for failed unit %i
+
+[Service]
+Type=oneshot
+# The `-` prefix means a failing notify-send is ignored instead of turning this
+# handler into a second failed unit. That happens legitimately: dotsnap.timer is
+# Persistent=true, so a missed run fires at boot, possibly before the graphical
+# session (and noti) exists. The journal remains the source of truth.
+ExecStart=-/usr/bin/notify-send --urgency=critical --app-name=systemd \
+    "%i failed" "Inspect with:\njournalctl --user -u %i -n 30"
+Slice=session.slice
