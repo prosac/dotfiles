@@ -1,0 +1,355 @@
+#!/usr/bin/env python3
+"""Report what each screen-lock actually cost, in wasted submissions.
+
+WHY THIS EXISTS
+---------------
+The FIDO2 lock-screen path was tuned three times on guesses about which
+interaction was being wasted, and each round the symptom shifted rather than
+disappeared (three Enters -> one Enter -> "usually one, sometimes four"). The
+journal already holds the answer; it was just never aggregated. This turns that
+into one command, so the next change is judged against a measured baseline
+instead of an impression.
+
+The 8-day baseline taken on 2026-08-20, before `nodelay` and pam_u2f `debug`:
+
+    58 complete locks, 65 wasted submissions (avg 1.12)
+    locks <= 31s : 2, both cost 0
+    locks  > 31s : 55, every one cost >= 1
+
+WHAT THE NUMBERS MEAN
+---------------------
+hyprlock starts its PAM transaction the instant the screen locks, so pam_u2f
+arms the key and blocks for the authenticator's ~31s CTAP window right then --
+while nobody is there. After it lapses the stack falls through to pam_unix and
+waits on a password prompt forever, with the key unarmed. Returning later, a
+touch does nothing; only a *failed* submission ends the transaction, and
+hyprlock's unbounded retry loop (src/auth/Pam.cpp, `while (true)`) then starts a
+fresh one, which re-arms the key. That wasted submission is the cost.
+
+It is upstream and deliberate: hyprlock PR #409 ("don't start pam conversation
+before the initial input happens") was reverted by PR #1003, whose author named
+timeout-implementing PAM modules as the accepted casualty. Tracked, unanswered,
+as hyprlock issue #1057.
+
+So: a lock shorter than the CTAP window should cost 0. A longer one costs >= 1
+until that is fixed locally. What this report is really for is the *residual* --
+locks costing 2+, whose cause is not established. Two candidates:
+
+  (a) touches lost to pam_unix's own ~2s delay-on-failure, which sits between the
+      failed submission and hyprlock re-arming the key. Addressed 2026-08-20 with
+      `nodelay`; if that was the cause, the 2+ column should collapse.
+  (b) fingerprint user-verification rejections. With `userverification = 1` a bad
+      read fails pam_u2f silently and produces another password prompt, which is
+      indistinguishable to the user from "the key did nothing".
+
+pam_u2f `debug` was enabled the same day to tell them apart. Use --raw on a lock
+that cost 2+ to read its actual pam_u2f output; the debug vocabulary is not
+hardcoded here because it had not been observed yet when this was written.
+
+USAGE
+    fido2-unlock-report                  # last 7 days
+    fido2-unlock-report --since '30 days ago'
+    fido2-unlock-report --raw            # include pam_u2f debug per lock
+    fido2-unlock-report --raw --only-multi   # just the unexplained ones
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from datetime import datetime
+
+# The authenticator's CTAP window. Not a pam_u2f setting -- pam_u2f 1.4.0 has no
+# timeout option at all; this is the device giving up. Taken as ~31s on the
+# Kensington VeriMark Guard (047d:8055) from the one lock in the 8-day baseline
+# that was held exactly 31s and still cost nothing. With pam_u2f `debug` enabled
+# (2026-08-20) it no longer has to be assumed: every arm/finish pair is now
+# timestamped in the journal, and MEASURED WINDOW below reports what the device
+# actually did. If that column disagrees with this constant, trust the column.
+CTAP_WINDOW_S = 31
+
+LOCK_START = "Hyprlock version"
+SUBMISSION_FAILED = "pam_unix(hyprlock-fido2:auth): authentication failure"
+UNLOCKED = "authenticated for hyprlock-fido2"
+RESUMED = "System returned from sleep operation"
+HOOK = "fido2-resume-reset"
+
+# How long after a resume the sleep hook's own log may arrive before we count it
+# as missing. Observed at under a second; 15s is slack, not a real bound.
+HOOK_WINDOW_S = 15
+
+# pam_u2f debug markers bracketing one CTAP wait -- i.e. one window in which a
+# touch would actually have been accepted.
+ROUND_ARMED = "Attempting authentication with device number"
+ROUND_DONE = "(pam_sm_authenticate): done."
+
+
+@dataclass
+class Resume:
+    """One wake from sleep, and whether the FIDO2 sleep hook reported in.
+
+    Three outcomes are genuinely different and were conflated in the first
+    version of this script: the hook reset the key; the hook ran but found no key
+    connected (benign -- it was unplugged); the hook logged nothing at all. Only
+    the third is a possible defect, and even then the innocent explanation is
+    that the hook was not installed yet -- its first log is 2026-08-13T11:08,
+    while suspends go back further. So this reports counts and never cries wolf.
+    """
+
+    at: datetime
+    operation: str
+    hook_line: str | None = None
+
+    @property
+    def key_was_reset(self) -> bool:
+        return self.hook_line is not None and self.hook_line.startswith("reset ")
+
+    @property
+    def hook_ran(self) -> bool:
+        return self.hook_line is not None
+
+
+@dataclass
+class Lock:
+    """One screen-lock, from hyprlock starting to the session unlocking."""
+
+    started: datetime
+    pid: str
+    failures: list[datetime] = field(default_factory=list)
+    unlocked: datetime | None = None
+    suspended: bool = False
+    u2f_debug: list[tuple[datetime, str]] = field(default_factory=list)
+
+    @property
+    def duration_s(self) -> float | None:
+        if self.unlocked is None:
+            return None
+        return (self.unlocked - self.started).total_seconds()
+
+    @property
+    def wasted(self) -> int:
+        return len(self.failures)
+
+    @property
+    def within_window(self) -> bool:
+        d = self.duration_s
+        return d is not None and d <= CTAP_WINDOW_S
+
+    @property
+    def rounds(self) -> list[tuple[float, str]]:
+        """Every CTAP wait this lock went through, as (seconds, verdict).
+
+        This is the instrument that matters. A round ending in failure after
+        ~31s is the key timing out untouched -- the window was open and nobody
+        was there. A round ending in failure after a second or two is something
+        else entirely, and fingerprint user-verification rejection is the
+        leading candidate: with userverification = 1 a bad read fails pam_u2f
+        and falls straight through to another password prompt, which looks
+        exactly like "the key did nothing" from the outside.
+        """
+        out: list[tuple[float, str]] = []
+        armed: datetime | None = None
+        for at, m in self.u2f_debug:
+            if ROUND_ARMED in m:
+                armed = at
+            elif ROUND_DONE in m and armed is not None:
+                verdict = m.split("done.", 1)[1].strip().strip("[]") or "?"
+                out.append(((at - armed).total_seconds(), verdict))
+                armed = None
+        return out
+
+
+def journal(since: str) -> list[dict]:
+    """Read the journal as JSON. Fields beat regex over formatted output."""
+    out = subprocess.run(
+        ["journalctl", "--since", since, "--no-pager", "-o", "json"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    events = []
+    for line in out.splitlines():
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue  # journalctl occasionally emits non-JSON filler
+    return events
+
+
+def ts(entry: dict) -> datetime:
+    return datetime.fromtimestamp(int(entry["__REALTIME_TIMESTAMP"]) / 1_000_000)
+
+
+def msg(entry: dict) -> str:
+    m = entry.get("MESSAGE", "")
+    # A journal MESSAGE can be a byte array rather than a string.
+    return "".join(map(chr, m)) if isinstance(m, list) else str(m)
+
+
+def collect(events: list[dict]) -> tuple[list[Lock], list[Resume]]:
+    """Group journal entries into locks, keyed on the hyprlock PID.
+
+    The PID is what makes this reliable: hypridle logs the lock under the
+    hyprlock child's PID, and every pam_unix / pam_u2f line from that lock
+    carries the same one. Without it, overlapping locks and a stray unlock
+    would be attributed to the wrong session.
+    """
+    locks: list[Lock] = []
+    resumes: list[Resume] = []
+    by_pid: dict[str, Lock] = {}
+
+    for e in events:
+        m, pid = msg(e), str(e.get("_PID", ""))
+
+        if LOCK_START in m:
+            lock = Lock(started=ts(e), pid=pid)
+            locks.append(lock)
+            by_pid[pid] = lock
+            continue
+
+        # A resume is session-wide, not per-PID: attribute it to every lock still
+        # open at that moment.
+        if RESUMED in m:
+            op = re.search(r"operation '([^']+)'", m)
+            resumes.append(Resume(at=ts(e), operation=op.group(1) if op else "?"))
+            for lock in (l for l in locks if l.unlocked is None):
+                lock.suspended = True
+            continue
+
+        # Bind the hook's log to the resume it belongs to, rather than to a lock.
+        if e.get("SYSLOG_IDENTIFIER") == HOOK:
+            if resumes and (ts(e) - resumes[-1].at).total_seconds() <= HOOK_WINDOW_S:
+                resumes[-1].hook_line = m
+            continue
+
+        lock = by_pid.get(pid)
+        if lock is None or lock.unlocked is not None:
+            continue
+
+        if SUBMISSION_FAILED in m:
+            lock.failures.append(ts(e))
+        elif UNLOCKED in m:
+            lock.unlocked = ts(e)
+        elif "pam_u2f" in m:
+            lock.u2f_debug.append((ts(e), m))
+
+    return locks, resumes
+
+
+def duration(seconds: float) -> str:
+    if seconds < 90:
+        return f"{seconds:.0f}s"
+    if seconds < 5400:
+        return f"{seconds / 60:.0f}m"
+    return f"{seconds / 3600:.1f}h"
+
+
+def report(locks: list[Lock], resumes: list[Resume], raw: bool, only_multi: bool) -> int:
+    done = [l for l in locks if l.unlocked is not None]
+    if not done:
+        print("No completed locks in range.", file=sys.stderr)
+        return 1
+
+    shown = [l for l in done if l.wasted >= 2] if only_multi else done
+
+    print(f"{'lock':<17} {'held':>6} {'wasted':>7}  notes")
+    print("-" * 58)
+    for lock in shown:
+        notes = []
+        if lock.within_window:
+            notes.append(f"within {CTAP_WINDOW_S}s window")
+        if lock.suspended:
+            notes.append("suspended")
+        if lock.wasted >= 2:
+            notes.append("UNEXPLAINED (2+)")
+        if lock.wasted == 0 and not lock.within_window:
+            notes.append("0 waste past window -> likely typed password")
+        print(
+            f"{lock.started:%m-%d %H:%M:%S} {duration(lock.duration_s):>6} "
+            f"{lock.wasted:>7}  {', '.join(notes)}"
+        )
+        for secs, verdict in lock.rounds:
+            print(f"      round {secs:6.1f}s -> {verdict}")
+        if raw:
+            for at, line in lock.u2f_debug:
+                print(f"      | {at:%H:%M:%S} {line}")
+
+    total = len(done)
+    wasted = sum(l.wasted for l in done)
+    inside = [l for l in done if l.within_window]
+    outside = [l for l in done if not l.within_window]
+    multi = [l for l in done if l.wasted >= 2]
+    clean = [l for l in outside if l.wasted == 0]
+
+    print()
+    print(f"locks                     {total}")
+    print(f"wasted submissions        {wasted}  (avg {wasted / total:.2f} per unlock)")
+    if inside:
+        w = sum(l.wasted for l in inside)
+        print(f"held <= {CTAP_WINDOW_S}s             {len(inside)}  costing {w} -- expect 0")
+    if outside:
+        w = sum(l.wasted for l in outside)
+        print(f"held >  {CTAP_WINDOW_S}s             {len(outside)}  costing {w} -- expect >= 1 each")
+        print(f"  of which cost 0         {len(clean)}  (password typed, not a touch)")
+    timeouts = [s for l in done for s, v in l.rounds if "success" not in v.lower()]
+    if timeouts:
+        longest = sorted(timeouts)[-1]
+        quick = [s for s in timeouts if s < CTAP_WINDOW_S / 2]
+        print()
+        print(f"MEASURED WINDOW  failed CTAP waits: {len(timeouts)}, "
+              f"longest {longest:.1f}s (assumed {CTAP_WINDOW_S}s)")
+        if quick:
+            print(f"  {len(quick)} failed in under {CTAP_WINDOW_S // 2}s -- too fast to be a")
+            print("  timeout. That is the fingerprint-rejection signature, not an")
+            print("  expired window, and it is what --raw was added to read.")
+        print()
+    else:
+        print()
+        print("MEASURED WINDOW  no failed CTAP waits recorded. Either pam_u2f `debug`")
+        print("  is off (see /etc/security/pam_u2f.conf) or the range predates it")
+        print("  being enabled on 2026-08-20 -- so the round column will be empty.")
+        print()
+    print(f"cost 2+ (unexplained)     {len(multi)}", end="")
+    print(f"  <- run --raw --only-multi" if multi else "")
+    if resumes:
+        reset = [r for r in resumes if r.key_was_reset]
+        no_key = [r for r in resumes if r.hook_ran and not r.key_was_reset]
+        silent = [r for r in resumes if not r.hook_ran]
+        print()
+        print(f"resumes                   {len(resumes)}")
+        print(f"  key reset by hook       {len(reset)}")
+        if no_key:
+            print(f"  hook ran, no key        {len(no_key)}  (key was unplugged -- benign)")
+        if silent:
+            print(f"  no hook log             {len(silent)}  (earliest known hook log: 2026-08-13)")
+            for r in silent:
+                print(f"      {r.at:%m-%d %H:%M:%S} {r.operation}")
+            print("   A resume with no hook log either predates the hook or the hook")
+            print("   did not run. It matters: without the USB reset the key stays in")
+            print("   the device tree while functionally dead, and pam_u2f then BLOCKS")
+            print("   rather than fails -- so pam_unix is never reached and the")
+            print("   password fallback disappears with it. Assert the mechanism:")
+            print("   ls /usr/lib/systemd/system-sleep/fido2-resume-reset")
+    return 0
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description="Report wasted submissions per screen-lock.")
+    p.add_argument("--since", default="7 days ago", help="journalctl --since value")
+    p.add_argument("--raw", action="store_true", help="include pam_u2f debug output")
+    p.add_argument("--only-multi", action="store_true", help="only locks costing 2+")
+    a = p.parse_args()
+    try:
+        locks, resumes = collect(journal(a.since))
+        return report(locks, resumes, a.raw, a.only_multi)
+    except subprocess.CalledProcessError as e:
+        print(f"journalctl failed: {e.stderr.strip()}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
