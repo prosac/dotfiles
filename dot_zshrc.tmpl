@@ -153,6 +153,20 @@ if [[ -o interactive && -n "$HYPRLAND_INSTANCE_SIGNATURE" ]]; then
   add-zsh-hook precmd _term_ident_update
 fi
 
+# --- open handover docs (motd) ------------------------------------------------
+# Print what was left half-finished when a new terminal window comes up, so a
+# handover doc gets picked up instead of forgotten. Frontmatter-driven and
+# offline (see `handover --help`), so it costs a file scan, not a network call.
+#
+# The guards are what keep it from becoming noise: SHLVL=1 skips subshells,
+# $TMUX skips every pane of an existing session, and $INSIDE_EMACS skips vterm.
+# Run `handover` by hand in any of those. `--motd` prints nothing when nothing
+# is open and swallows its own errors — this must never be why a terminal comes
+# up wrong.
+if [[ -o interactive && $SHLVL -eq 1 && -z "$TMUX" && -z "$INSIDE_EMACS" ]]; then
+  "$HOME/.local/bin/handover" --motd
+fi
+
 {{ if eq .machineRole "work" -}}
 # AsyncAPI CLI autocomplete (work-only tooling). Setup path is written by the
 # asyncapi CLI installer; source it if present.

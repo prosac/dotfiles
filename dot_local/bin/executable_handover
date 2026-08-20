@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+"""``handover`` — what was left half-finished, shown when you sit down at a terminal.
+
+Handover docs in ``~/Documents/docs`` are only useful if you remember they exist. This reads their
+frontmatter and prints the ones still marked open, newest first, with their tickets and the one next
+action — enough to pick something up without opening anything.
+
+A doc opts in through its own frontmatter, so the doc stays the single source of truth: you close it
+by editing the file you were already reading.
+
+    ---
+    status: open                                  # open | done (anything else = not tracked)
+    tickets: [CVHERO-1992, CVHERO-1987]           # optional
+    next: "merge !127, then measure the stuck rows"   # optional, one line
+    short: "uds-ingestion — page cap & stuck jobs"    # optional, else `title:`, else filename
+    updated: 2026-08-20                           # optional; else the file mtime
+    ---
+
+Usage:
+    handover              list the open ones (says so when there are none)
+    handover <n>          open the n-th in $VISUAL / $EDITOR
+    handover --motd       same list, but silent when nothing is open — the shell-startup mode.
+                          Cannot fail: any error exits 0 with no output, because a broken helper
+                          must never be the reason a terminal comes up wrong.
+    handover --all        include the ones marked done
+
+Stdlib only and no network on purpose: this runs before the first prompt.
+"""
+
+from __future__ import annotations
+
+import datetime
+import os
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+DOCS_DIR = Path(os.environ.get("HANDOVER_DOCS_DIR", "~/Documents/docs")).expanduser()
+# A frontmatter block long enough for any real doc; the cap is what stops a file that opens with
+# `---` and never closes it from being read to the end.
+_MAX_FRONT_MATTER_LINES = 80
+_OPEN, _DONE = "open", "done"
+
+
+# --- rendering ------------------------------------------------------------------------------------
+# Dim/bold and one colour only: the terminal theme flips between light and dark here
+# (toggle-color-scheme), so anything brighter reads well in exactly one of them.
+class Style:
+    def __init__(self, enabled: bool) -> None:
+        self.enabled = enabled
+
+    def _wrap(self, code: str, text: str) -> str:
+        return f"\033[{code}m{text}\033[0m" if self.enabled else text
+
+    def bold(self, text: str) -> str:
+        return self._wrap("1", text)
+
+    def dim(self, text: str) -> str:
+        return self._wrap("2", text)
+
+    def accent(self, text: str) -> str:
+        return self._wrap("36", text)
+
+
+@dataclass(frozen=True, slots=True)
+class Handover:
+    path: Path
+    status: str
+    title: str
+    tickets: tuple[str, ...]
+    next_action: str
+    # When the *work* was last touched. The file mtime is the self-maintaining default, but it
+    # answers a slightly different question — a typo fix would otherwise promote a doc to the top of
+    # the list — so an explicit `updated:` wins when the doc states one.
+    touched: float
+
+    @property
+    def age(self) -> str:
+        """How long since the doc was last touched — the "where did I stop" signal."""
+        seconds = max(time.time() - self.touched, 0)
+        if seconds < 3600:
+            return f"{int(seconds // 60)}m ago"
+        if seconds < 86_400:
+            return f"{int(seconds // 3600)}h ago"
+        return f"{int(seconds // 86_400)}d ago"
+
+
+def read_front_matter(path: Path) -> dict[str, str | list[str]]:
+    """The doc's frontmatter as a flat mapping, or ``{}`` when it has none.
+
+    A deliberately small YAML subset — scalars, quoted scalars and inline ``[a, b]`` lists — rather
+    than a PyYAML import: this runs on every new terminal, and a startup helper that depends on a
+    site-package is a helper that breaks after a Python upgrade."""
+    try:
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            if handle.readline().rstrip("\n") not in ("---",):
+                return {}
+            raw: list[str] = []
+            for _ in range(_MAX_FRONT_MATTER_LINES):
+                line = handle.readline()
+                if not line or line.rstrip("\n") in ("---", "..."):
+                    break
+                raw.append(line.rstrip("\n"))
+            else:
+                return {}  # never closed within the cap: not frontmatter we can trust
+    except OSError:
+        return {}
+    fields: dict[str, str | list[str]] = {}
+    for line in raw:
+        if not line.strip() or line.lstrip().startswith("#") or ":" not in line:
+            continue
+        if line[0].isspace():
+            continue  # nested block (e.g. a multi-line list) — nothing here needs one
+        key, _, value = line.partition(":")
+        fields[key.strip()] = _parse_value(value.strip())
+    return fields
+
+
+def _parse_value(value: str) -> str | list[str]:
+    if value.startswith(("'", '"')):
+        quote = value[0]
+        end = value.find(quote, 1)
+        return value[1:end] if end > 0 else value[1:]
+    # An unquoted value may carry a trailing comment (`publish: false   # flip to true …`).
+    value = value.split(" #", 1)[0].strip()
+    if value.startswith("[") and value.endswith("]"):
+        return [item.strip().strip("'\"") for item in value[1:-1].split(",") if item.strip()]
+    return value
+
+
+def _as_list(value: str | list[str] | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, list):
+        return tuple(value)
+    return (value,) if value else ()
+
+
+def _touched_at(updated: str | list[str] | None, path: Path) -> float:
+    """The doc's own ``updated:`` date if it has a readable one, else the file mtime."""
+    if isinstance(updated, str) and updated:
+        try:
+            day = datetime.date.fromisoformat(updated.strip())
+        except ValueError:
+            pass
+        else:
+            # Midday, so a date-only value is not reported as "1d ago" the moment it is written.
+            return datetime.datetime.combine(
+                day, datetime.time(12), tzinfo=datetime.UTC
+            ).timestamp()
+    return path.stat().st_mtime
+
+
+def collect(include_done: bool = False) -> list[Handover]:
+    """Every tracked doc, most recently touched first."""
+    wanted = {_OPEN, _DONE} if include_done else {_OPEN}
+    found: list[Handover] = []
+    for path in sorted(DOCS_DIR.rglob("*.md")):
+        fields = read_front_matter(path)
+        status = str(fields.get("status", "")).lower()
+        if status not in wanted:
+            continue
+        title = str(fields.get("short") or fields.get("title") or path.stem.replace("-", " "))
+        found.append(
+            Handover(
+                path=path,
+                status=status,
+                title=title,
+                tickets=_as_list(fields.get("tickets")),
+                next_action=str(fields.get("next", "")),
+                touched=_touched_at(fields.get("updated"), path),
+            )
+        )
+    return sorted(found, key=lambda item: item.touched, reverse=True)
+
+
+def render(items: list[Handover], style: Style, width: int) -> str:
+    # "open" only when every entry is: `--all` mixes in the done ones, and calling those open is
+    # the kind of small lie that makes a reader stop trusting the rest of the line.
+    scope = "open " if all(item.status == _OPEN for item in items) else ""
+    heading = f"{len(items)} {scope}handover{'s' if len(items) != 1 else ''}"
+    lines = [style.bold(f"◆ {heading}"), ""]
+    for index, item in enumerate(items, start=1):
+        # Title left, age right, at least two spaces between them even on a narrow terminal.
+        room = max(width - len(item.age) - 8, 20)
+        title = item.title if len(item.title) <= room else item.title[: room - 1] + "…"
+        gap = " " * max(width - 5 - len(title) - len(item.age) - 1, 2)
+        marker = style.dim(f"{index}")
+        suffix = style.dim("done") if item.status == _DONE else style.dim(item.age)
+        lines.append(f"  {marker}  {title}{gap}{suffix}")
+        if item.tickets:
+            lines.append(f"     {style.accent(' '.join(item.tickets))}")
+        if item.next_action:
+            lines.append(f"     → {item.next_action}")
+        lines.append("")
+    lines.append(style.dim("  open with: handover <n>"))
+    return "\n".join(lines)
+
+
+def open_in_editor(item: Handover) -> int:
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "less"
+    return os.spawnvp(os.P_WAIT, editor.split()[0], [*editor.split(), str(item.path)])
+
+
+def main(argv: list[str]) -> int:
+    args = argv[1:]
+    motd = "--motd" in args
+    include_done = "--all" in args
+    positional = [arg for arg in args if not arg.startswith("-")]
+
+    items = collect(include_done=include_done)
+    if not items:
+        if motd:
+            return 0
+        print("No open handover docs.")
+        return 0
+
+    if positional:
+        try:
+            chosen = items[int(positional[0]) - 1]
+        except (ValueError, IndexError):
+            print(f"handover: no such entry {positional[0]!r} (1–{len(items)})", file=sys.stderr)
+            return 2
+        return 1 if open_in_editor(chosen) else 0
+
+    style = Style(sys.stdout.isatty() and not os.environ.get("NO_COLOR"))
+    width = min(os.get_terminal_size().columns if sys.stdout.isatty() else 80, 100)
+    print(render(items, style, width))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv))
+    except Exception:  # noqa: BLE001 — a startup helper must never break a terminal
+        if "--motd" in sys.argv:
+            sys.exit(0)
+        raise
