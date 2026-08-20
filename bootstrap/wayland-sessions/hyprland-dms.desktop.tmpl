@@ -2,6 +2,14 @@
 Name=Hyprland (DMS)
 Comment=Hyprland with DankMaterialShell as the shell, lock screen and idle daemon
 Exec={{ .chezmoi.homeDir }}/.local/bin/hyprland-dms
-TryExec={{ .chezmoi.homeDir }}/.local/bin/hyprland-dms
+# ⚠️ NO TryExec. GDM validates TryExec as the `gdm` user, before any login, via
+# g_find_program_in_path() -> an X_OK test on the absolute path. This home
+# directory is 0700, so `gdm` cannot even traverse it: the test fails, the
+# session file is rejected as invalid, and the entry silently DISAPPEARS from
+# the greeter's session list — no log line, no error, it is simply not offered.
+# (That is what happened between 2026-08-06 and 2026-08-20.)
+# Exec is fine pointing into $HOME because it runs as the user AFTER auth.
+# A /usr/local/bin shim would only make TryExec test the shim, not the real
+# launcher, so it would buy nothing but indirection.
 DesktopNames=Hyprland
 Type=Application
