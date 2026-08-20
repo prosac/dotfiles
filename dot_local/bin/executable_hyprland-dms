@@ -1,17 +1,111 @@
 #!/usr/bin/env bash
-# Hyprland session variant that runs DankMaterialShell (dms) in place of waybar.
-# Used by /usr/share/wayland-sessions/hyprland-dms.desktop (installed via
-# `mise run bootstrap:dms-session`).
+# Hyprland session variant that runs DankMaterialShell (dms) as the shell,
+# in place of the eight-daemon setup the default session uses.
+# Used by /usr/share/wayland-sessions/hyprland-dms.desktop, installed via
+# `mise run bootstrap:dms-session`.
 #
-# Mechanism: --runtime mask waybar (so graphical-session.target won't pull it in)
-# and --runtime enable dms (so it does). Both runtime changes live in /run and
-# vanish when the user's systemd manager exits (full logout); the EXIT trap
-# also reverses them on graceful session exit.
-set -euo pipefail
+# WHAT MAKES THIS SESSION DIFFERENT, AND WHY IT IS DONE THIS WAY
+#
+# The niri session distinguishes itself with XDG_CURRENT_DESKTOP=niri, which
+# every shared unit gates on via `ConditionEnvironment=|XDG_CURRENT_DESKTOP=…`.
+# A *second Hyprland* session cannot use that lever: it must keep announcing
+# DesktopNames=Hyprland or xdg-desktop-portal-hyprland stops matching and
+# screen-sharing/file-pickers break. So the switch is made in systemd's runtime
+# tree instead — `--runtime mask` and `--runtime enable` write into
+# /run/user/$UID/systemd/user/, which is destroyed when the user's systemd
+# manager exits. `loginctl show-user $USER -p Linger` is `no`, so the manager
+# really does exit at logout and these overrides really do vanish.
+#
+# The isolation guarantee therefore does NOT rest on the trap below firing: even
+# a SIGKILL of this session leaves the default session clean, because the state
+# lives in /run and in the running Hyprland instance, both of which die with the
+# session. The trap only makes the cleanup happen sooner.
+#
+# ⚠️ THE ONE THING THAT WOULD BREAK THAT: enabling lingering (`loginctl
+# enable-linger`), which rootless k3s is a plausible future reason to do. A user
+# manager that outlives logout would keep `waybar.service` masked, and the
+# DEFAULT Hyprland session would then start with no bar and no notifications.
+# If lingering is ever turned on, this script must switch to explicit cleanup
+# (or the units must be gated some other way).
+#
+# LOCKING AND IDLE ARE DMS'S HERE TOO — deliberately not mixed. hypridle is
+# masked below, and nothing then starts hyprlock: hyprlock.service has no
+# [Install] section, so it only ever ran on demand from hypridle's `lock_cmd`.
+# `Super+Escape` still runs `loginctl lock-session` (hyprland.conf is untouched);
+# logind's Lock signal now reaches DMS instead, because DMS's
+# loginctlLockIntegration is left at its default of true and there is no second
+# ext-session-lock client to race it.
+#
+# The FIDO2 stick still unlocks, and still with a bare touch rather than an extra
+# keypress: DMS is pointed at /etc/pam.d/dms-fido2 as its *primary* PAM stack
+# (`pam_u2f sufficient` + `pam_unix required`), which arms the key the moment the
+# screen locks. See dot_config/DankMaterialShell/create_settings.json.tmpl and
+# bootstrap/pam/dms-fido2 — including the one silent failure mode, where an
+# unreadable PAM file degrades DMS to the `login` service.
+#
+# hypridle.conf itself is NOT edited: it is shared with the default and niri
+# sessions. Masking the unit is what takes it out of this session, so those two
+# keep their 5-minute dim, 10-minute lock and resume handling exactly as before.
+# The one thing not carried over into DMS is that 5-minute brightness dim — DMS's
+# IdleService has no dim stage.
+#
+# `set -e` is deliberately absent. This script is a GDM session entry point: if
+# one `systemctl` call failed under `set -e`, the compositor would never start
+# and the user would be bounced back to the greeter with no explanation. Every
+# call is individually guarded instead, so the worst case is a session that
+# starts with one daemon in the wrong state.
+set -uo pipefail
 
-systemctl --user --runtime mask waybar.service
-systemctl --user --runtime enable dms.service
+# Units the default session pulls in that DMS supersedes. Masking (not just
+# stopping) is required because graphical-session.target would otherwise pull
+# them straight back in.
+#   waybar                              -> DMS bar
+#   wayland-noti                        -> DMS notifications
+#   swayosd                             -> DMS OSD (volume/brightness/caps)
+#   polkit-mate-authentication-agent-1  -> DMS Quickshell.Services.Polkit agent
+#   nm-applet                           -> DMS network panel + its own tray
+#   elephant                            -> walker's backend; DMS spotlight
+#                                          replaces walker (see dms-binds)
+#   hypridle                            -> DMS IdleService (and, via it, DMS's
+#                                          own lock screen). Masking this is
+#                                          what stops hyprlock being launched,
+#                                          since hypridle's `lock_cmd` was its
+#                                          only trigger.
+# Deliberately NOT masked: hyprlock.service (never enabled — on-demand only, and
+# nothing demands it now), swww + waypaper (wallpaper is entangled with
+# toggle-color-scheme; moving it to `dms ipc call wallpaper` is a separate,
+# optional step), kando, opentabletdriver.
+MASK_UNITS=(
+  waybar.service
+  wayland-noti.service
+  swayosd.service
+  polkit-mate-authentication-agent-1.service
+  nm-applet.service
+  elephant.service
+  hypridle.service
+)
 
-trap 'systemctl --user --runtime unmask waybar.service; systemctl --user --runtime disable dms.service' EXIT
+# dms.service is packaged by the `dms` RPM and is persistently DISABLED (the
+# `bootstrap:dms-session` mise task does that), so it never starts in the
+# default session. dms-binds re-points the launcher keys at DMS inside the
+# running compositor — see ~/.local/bin/dms-binds.
+ENABLE_UNITS=(
+  dms.service
+  dms-binds.service
+)
 
+cleanup() {
+  # Every call is `|| true`: a trap inherits the shell's options, so one failure
+  # must not abort the trap and leave the remaining units masked.
+  local u
+  for u in "${MASK_UNITS[@]}";   do systemctl --user --runtime unmask  "$u" || true; done
+  for u in "${ENABLE_UNITS[@]}"; do systemctl --user --runtime disable "$u" || true; done
+}
+trap cleanup EXIT
+
+for u in "${MASK_UNITS[@]}";   do systemctl --user --runtime mask   "$u" || true; done
+for u in "${ENABLE_UNITS[@]}"; do systemctl --user --runtime enable "$u" || true; done
+
+# NB: no `exec`. This shell must stay alive as uwsm's parent so the EXIT trap
+# above still runs when the session ends.
 uwsm start -- hyprland.desktop

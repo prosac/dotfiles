@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Re-point the launcher and panel keys at DankMaterialShell, in the running
+Hyprland instance only — for the "Hyprland (DMS)" session.
+
+WHY THIS EXISTS AT ALL
+
+The DMS session runs `uwsm start -- hyprland.desktop`, i.e. the *same*
+~/.config/hypr/hyprland.conf as the default Hyprland session. So `$menu`
+(Super+D, Super+Space) points at walker in both. Rewriting those lines in
+hyprland.conf would take the launcher away from the default session, and adding
+a `shell-dispatch` indirection to the shared config would put new code in the
+path of every launcher press in the session this whole exercise is meant to
+leave untouched.
+
+Instead this runs `hyprctl keyword unbind` / `bind` after the compositor is up.
+Those writes live only in the running Hyprland instance and die with it, exactly
+like the `--runtime` unit masks in ~/.local/bin/hyprland-dms. hyprland.conf is
+not modified, and the default session's config *and its code path* stay
+byte-identical.
+
+Started as dms-binds.service, which ~/.local/bin/hyprland-dms runtime-enables
+alongside dms.service.
+
+SAFETY: this refuses to run unless dms.service is active. Without that check a
+stray invocation in the default session would unbind Super+D and point it at a
+`dms` that is not running — i.e. no launcher at all.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import time
+
+READY_TIMEOUT_S = 30.0
+READY_POLL_S = 0.1
+
+# mods, key, dispatcher, argument.
+#
+# Super+W (waypaper) is deliberately NOT here: wallpaper is still swww +
+# waypaper in this session because it is entangled with toggle-color-scheme.
+# Moving it to `dms ipc call wallpaper` is a separate, optional step.
+#
+# Every function below was checked against DMS v1.5.3's IpcHandler targets.
+# NB the docs site lists only `notifications open`, but `toggle` does exist.
+BINDS: list[tuple[str, str, str, str]] = [
+    # --- replacing an existing bind (walker -> DMS spotlight) ---
+    ("SUPER", "D", "exec", "dms ipc call spotlight toggle"),
+    ("SUPER", "Space", "exec", "dms ipc call spotlight toggle"),
+    # --- new keys, all verified free against the default session's 84 binds ---
+    ("SUPER", "N", "exec", "dms ipc call notifications toggle"),
+    ("SUPER", "A", "exec", "dms ipc call control-center toggle"),
+    ("SUPER", "X", "exec", "dms ipc call powermenu toggle"),
+    ("SUPER SHIFT", "V", "exec", "dms ipc call clipboard toggle"),
+    ("SUPER", "slash", "exec", "dms ipc call keybinds toggle hyprland"),
+]
+
+
+def hyprctl(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["hyprctl", *args], capture_output=True, text=True, check=False
+    )
+
+
+def dms_is_active() -> bool:
+    return (
+        subprocess.run(
+            ["systemctl", "--user", "is-active", "--quiet", "dms.service"],
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def wait_for_hyprland() -> bool:
+    """Block until hyprctl can actually talk to the compositor.
+
+    Two things have to be true, and they become true at different moments:
+    HYPRLAND_INSTANCE_SIGNATURE has to be in this process's environment
+    (hyprctl does NOT auto-discover the instance — it exits with
+    "HYPRLAND_INSTANCE_SIGNATURE not set!"), and the IPC socket has to answer.
+    uwsm imports HIS into the systemd user environment when it finalizes, and
+    graphical-session.target is reached after that, so a unit ordered on the
+    target normally has it — but poll rather than assume, since losing the race
+    would silently leave the session on walker.
+    """
+    deadline = time.monotonic() + READY_TIMEOUT_S
+    while time.monotonic() < deadline:
+        if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+            if hyprctl("monitors", "-j").returncode == 0:
+                return True
+        time.sleep(READY_POLL_S)
+    return False
+
+
+def apply_binds() -> list[str]:
+    """Unbind then bind each key. Returns a list of failure descriptions.
+
+    The unbind is unconditional: hyprctl answers `ok` for a key that was never
+    bound, so the same code path handles "replace walker" and "add a new key",
+    and re-running the whole thing is idempotent.
+    """
+    failures: list[str] = []
+    for mods, key, dispatcher, arg in BINDS:
+        hyprctl("keyword", "unbind", f"{mods},{key}")
+        res = hyprctl("keyword", "bind", f"{mods},{key},{dispatcher},{arg}")
+        if res.returncode != 0 or res.stdout.strip() != "ok":
+            failures.append(
+                f"{mods},{key} -> {arg!r}: rc={res.returncode} "
+                f"out={res.stdout.strip()!r} err={res.stderr.strip()!r}"
+            )
+    return failures
+
+
+def verify() -> list[str]:
+    """Read the binds back out of the compositor and confirm each one landed.
+
+    Checked rather than assumed because the failure is otherwise invisible: a
+    launcher key that silently still points at a masked walker looks like DMS
+    being broken, not like this script being broken.
+    """
+    res = hyprctl("binds", "-j")
+    if res.returncode != 0:
+        return [f"could not read binds back: {res.stderr.strip()!r}"]
+    try:
+        live = json.loads(res.stdout)
+    except json.JSONDecodeError as exc:
+        return [f"could not parse `hyprctl binds -j`: {exc}"]
+
+    mod_bits = {"SHIFT": 1, "CTRL": 4, "ALT": 8, "SUPER": 64}
+    missing: list[str] = []
+    for mods, key, _dispatcher, arg in BINDS:
+        want_mask = sum(mod_bits[m] for m in mods.split())
+        if not any(
+            b.get("modmask") == want_mask
+            and b.get("key", "").upper() == key.upper()
+            and b.get("arg") == arg
+            for b in live
+        ):
+            missing.append(f"{mods},{key} -> {arg!r}")
+    return missing
+
+
+def main() -> int:
+    if not dms_is_active():
+        print(
+            "dms.service is not active — refusing to rebind. This script is for "
+            "the 'Hyprland (DMS)' session only; rebinding without DMS running "
+            "would leave the session with no launcher.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if not wait_for_hyprland():
+        print(
+            f"Hyprland was not reachable via hyprctl within {READY_TIMEOUT_S:.0f}s "
+            f"(HYPRLAND_INSTANCE_SIGNATURE="
+            f"{os.environ.get('HYPRLAND_INSTANCE_SIGNATURE', '<unset>')!r}) — "
+            "leaving the default binds in place.",
+            file=sys.stderr,
+        )
+        return 1
+
+    failures = apply_binds()
+    missing = verify()
+    for line in failures:
+        print(f"bind failed: {line}", file=sys.stderr)
+    for line in missing:
+        print(f"bind did not take effect: {line}", file=sys.stderr)
+    if failures or missing:
+        return 1
+
+    print(f"dms-binds: applied {len(BINDS)} binds")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,112 @@
+{{/*
+
+DankMaterialShell settings — SEED ONLY.
+
+`create_` prefix: chezmoi writes this file once, if it is absent, and then never
+touches it again. That is deliberate and required — DMS *owns* settings.json at
+runtime (SettingsData.saveSettings() rewrites the whole file whenever any
+setting changes, and it can even flip the file read-only). Shipping it as a
+plain chezmoi file would turn every DMS settings change into permanent drift.
+Same precedent as dot_config/niri/create_colors.kdl.
+
+Because DMS rewrites it, this is a partial file on purpose: SettingsStore.parse()
+applies only the keys present here and leaves every other property at its QML
+default. `configVersion` is deliberately OMITTED — DMS 1.5.3 is at config
+version 13 and master is already at 16, so pinning a number here would be wrong
+for some build; leaving it out makes DMS run its migration chain over this file
+(verified: every migration guards on keys this seed does not set, so all of them
+are no-ops) and then rewrite the file stamped with whatever version it is.
+
+DESIGN: in this session DMS owns the shell, the lock screen AND idle. hyprlock
+and hypridle are not mixed in — hypridle is runtime-masked by
+~/.local/bin/hyprland-dms, and nothing starts hyprlock (hyprlock.service has no
+[Install] section, so it only ever ran on demand from hypridle's lock_cmd).
+`loginctlLockIntegration` is therefore left at its default of TRUE, which is
+what makes Super+Escape (`loginctl lock-session`, unchanged in hyprland.conf)
+reach DMS's lock screen. There is no second ext-session-lock client to race.
+
+1. LOCK AUTHENTICATION — the FIDO2 stick, armed immediately.
+
+   DMS's native security-key mode (enableU2f + u2fMode) treats the key as a
+   separate factor that you start on demand with the passkey button, which costs
+   a keypress on every unlock. Instead DMS is put in "custom primary PAM" mode
+   pointing at /etc/pam.d/dms-fido2, whose stack is `pam_u2f sufficient` then
+   `pam_unix required`. Because lockPamInlineU2f says that stack already
+   contains pam_u2f, DMS suppresses its own factor UI (Pam.qml:
+   `u2fSuppressedByPrimaryPam`) and the key is armed the instant the screen
+   locks — a bare touch unlocks, password still works as fallback. Identical to
+   hyprlock's behaviour today, reusing the same proven stack.
+
+   ⚠️ This is silent when it breaks. DMS only honours lockPamPath if it can READ
+   the file (`customPamActive = lockPamPath !== "" && customPamWatcher.loaded`);
+   otherwise it falls back down its chain to the service named `login` — i.e.
+   exactly into the pam_sss double-prompt trap that /etc/pam.d/dms-fido2 exists
+   to avoid, with nothing shown on screen. Install the file with
+   `mise run bootstrap:pam-dms`, which asserts both readability and that this
+   path matches.
+
+   enableU2f/enableFprint are left off on purpose: the primary stack does the
+   key, and there is no fprintd reader enrolled for the lock screen to use.
+
+2. IDLE — DMS's IdleService, mirroring the hypridle timings it replaces.
+
+   Timeouts are in SECONDS (Quickshell IdleMonitor; the 86400 fallback in
+   IdleService.qml confirms the unit). Mapped from hypridle.conf:
+
+     hypridle 600s  -> lock                     acLockTimeout            600
+     hypridle 630s  -> dpms off, 30s after lock  acPostLockMonitorTimeout  30
+     hypridle before_sleep_cmd -> lock          lockBeforeSuspend        true
+
+   acMonitorTimeout stays 0 (disabled): hypridle has no "monitors off *before*
+   lock" step, and IdleService disables the pre-lock monitor anyway once
+   postLockMonitorActive is set. Battery values equal the AC ones because
+   hypridle.conf does not distinguish AC from battery.
+
+   ⚠️ acSuspendTimeout MUST STAY 0. hypridle never suspended on idle, and that
+   is deliberate: on 2026-08-12 an unattended timed hibernate wedged inside a
+   closed backpack and cooked the machine for 44 minutes. Suspending is a
+   deliberate act here, never a timer. See the Super+CTRL+Escape comment in
+   hyprland.conf.
+
+   NOT carried over: hypridle's 300s `brightnessctl -s set 10%` dim step. DMS's
+   IdleService has no brightness-dim stage, so that is genuinely lost. Its
+   fadeToLock (a 5s fade before locking, cancelled by any input) is left at its
+   default of enabled and is the nearest thing to a pre-lock warning.
+
+3. THEMING — stays toggle-color-scheme's.
+
+   DMS ships wallpaper-derived Material 3 theming, and *every* template flag
+   defaults ON: matugenTemplateGtk, matugenTemplateHyprland, ...Ghostty,
+   ...Qt6ct, ...Emacs, ...Vscode. That is exactly the fan-out
+   toggle-color-scheme owns as the single source of truth, and several of those
+   templates write files chezmoi manages — so leaving this on would cause drift
+   in the DEFAULT session too, not only in the DMS one. These two master
+   switches are guarded in the QML (`!runDmsMatugenTemplates` -> return), and
+   matugen is additionally excluded at the dnf level (.chezmoidata/packages.yaml
+   -> packages.dnfExclude), so the templates are stopped twice: no switch and
+   no binary.
+
+See ~/Documents/docs/hyprland-dms-quickshell-session.md.
+
+*/ -}}
+{
+  "lockPamPath": "/etc/pam.d/dms-fido2",
+  "lockPamInlineU2f": true,
+  "lockPamInlineFprint": false,
+  "lockPamExternallyManaged": false,
+  "enableU2f": false,
+  "enableFprint": false,
+
+  "acLockTimeout": 600,
+  "acPostLockMonitorTimeout": 30,
+  "acMonitorTimeout": 0,
+  "acSuspendTimeout": 0,
+  "batteryLockTimeout": 600,
+  "batteryPostLockMonitorTimeout": 30,
+  "batteryMonitorTimeout": 0,
+  "batterySuspendTimeout": 0,
+  "lockBeforeSuspend": true,
+
+  "runDmsMatugenTemplates": false,
+  "runUserMatugenTemplates": false
+}

@@ -1,0 +1,26 @@
+[Unit]
+Description=Point launcher/panel keys at DankMaterialShell (DMS session only)
+Documentation=man:hyprctl(1)
+PartOf=graphical-session.target
+# Ordering only, deliberately NOT Requires=: this unit must never *pull in*
+# dms.service. It ships in the default Hyprland session too (it is a plain
+# chezmoi file), and is only ever runtime-enabled by ~/.local/bin/hyprland-dms.
+# With ordering alone, an accidental `systemctl --user start dms-binds` in the
+# default session is refused by dms-binds' own is-active guard and changes
+# nothing, instead of starting a shell nobody asked for.
+After=graphical-session.target dms.service
+Requisite=graphical-session.target
+# hyprctl-only, so never under niri. This is belt to the script's braces.
+ConditionEnvironment=XDG_CURRENT_DESKTOP=Hyprland
+
+[Service]
+Type=oneshot
+# So `systemctl --user is-active dms-binds` reports whether the rebind actually
+# succeeded — the script verifies its own binds and exits non-zero if any of
+# them did not land.
+RemainAfterExit=yes
+ExecStart=%h/.local/bin/dms-binds
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target

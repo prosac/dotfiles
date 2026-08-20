@@ -204,13 +204,37 @@ hyprctl reload                        # pick up `$menu = walker`
 
 ### DMS (DankMaterialShell) session — optional sandbox
 
-A second Hyprland session entry that swaps waybar for DMS, for trying DMS in isolation without changing the default session:
+A third session entry that runs the *same* Hyprland compositor and config as the default session, but replaces the whole shell — bar, notifications, OSD, polkit agent, launcher, **and the lock screen and idle daemon** — with a single DankMaterialShell Quickshell process. Nothing is mixed in: hypridle is masked, and hyprlock is then never launched (`hyprlock.service` is `static`, so hypridle's `lock_cmd` was its only trigger).
 
 ```sh
 mise run bootstrap:dms-session        # one-time: installs /usr/share/wayland-sessions/hyprland-dms.desktop
 ```
 
-Then log out and pick "Hyprland (DMS)" at GDM. The wrapper at `~/.local/bin/hyprland-dms` runtime-masks waybar.service and runtime-enables dms.service for that session only; defaults are restored on logout. To remove: `sudo rm /usr/share/wayland-sessions/hyprland-dms.desktop`.
+Then log out and pick "Hyprland (DMS)" at GDM. To remove: `sudo rm /usr/share/wayland-sessions/hyprland-dms.desktop`.
+
+**How it stays isolated.** A second *Hyprland* session cannot announce a distinct `XDG_CURRENT_DESKTOP` (it must stay `Hyprland` or xdg-desktop-portal-hyprland stops matching), so it cannot use the `ConditionEnvironment=` lever the niri session uses. Instead `~/.local/bin/hyprland-dms` does `systemctl --user --runtime mask/enable`, which writes into `/run/user/$UID/systemd/user/` and is destroyed when the user's systemd manager exits. `Linger=no`, so that really happens at logout — the guarantee does not depend on the wrapper's EXIT trap firing, and a hard crash still leaves the default session clean.
+
+⚠️ **This breaks if lingering is ever enabled** (`loginctl enable-linger`, e.g. for rootless k3s): a user manager that outlives logout keeps `waybar.service` masked, and the *default* session then starts with no bar.
+
+**Launcher/panel keys** are re-pointed at DMS by `dms-binds.service` → `~/.local/bin/dms-binds`, which runs `hyprctl keyword unbind/bind` inside the running compositor — so `hyprland.conf` is not edited and the default session's config *and code path* stay byte-identical. Super+D / Super+Space → DMS spotlight; plus Super+N notifications, Super+A control-center, Super+X powermenu, Super+Shift+V clipboard, Super+/ keybind cheatsheet. It refuses to run unless `dms.service` is active.
+
+**Locking, and the FIDO2 stick.** `Super+Escape` still runs `loginctl lock-session` (hyprland.conf is untouched); logind's `Lock` signal now reaches DMS, which owns the lock screen here. The stick still unlocks with a **bare touch, no extra keypress**: rather than DMS's native security-key mode — where the key is a separate factor you start on demand with the passkey button — DMS is pointed at `/etc/pam.d/dms-fido2` as its *primary* PAM stack (`pam_u2f sufficient` + `pam_unix required`, the same effective stack as `hyprlock-fido2`). `lockPamInlineU2f` tells DMS that stack already provides the key, so it suppresses its own factor UI and the key is armed the instant the screen locks.
+
+```sh
+mise run bootstrap:pam-dms            # installs /etc/pam.d/dms-fido2 and asserts it is readable
+```
+
+⚠️ **That has a silent failure mode.** DMS only honours `lockPamPath` if it can *read* the file; otherwise it falls back down its chain to the `login` service — i.e. straight into the `pam_sss` double-prompt trap that this file exists to avoid, with nothing shown on screen. A missing file does not lock you out, it degrades you to the old three-Enter behaviour. The mise task above asserts both readability and that `settings.json` points at the right path.
+
+**Idle** is DMS's `IdleService`, seeded to mirror the hypridle timings it replaces (lock at 600s, monitors off 30s later, lock-before-suspend). Timeouts are in **seconds**. `acSuspendTimeout` stays `0` on purpose — idle must never suspend this machine. The one thing not carried over is hypridle's 5-minute `brightnessctl` dim: DMS has no dim stage, and its 5s fade-to-lock is the nearest pre-lock warning.
+
+Everything above is seeded once into `~/.config/DankMaterialShell/settings.json` (a `create_` file — DMS owns it at runtime). See the header comment in `dot_config/DankMaterialShell/create_settings.json.tmpl` for the full reasoning on every key.
+
+**`matugen` is excluded at the dnf level** (`.chezmoidata/packages.yaml` → `packages.dnfExclude`). DMS only `Recommends:` it, but all of its template flags default ON and target exactly what `toggle-color-scheme` owns (GTK, Hyprland, ghostty, Qt6ct, Emacs) — several of them writing chezmoi-managed files, which would drift the *default* session too. `toggle-color-scheme` instead gained a guarded `sync_dms` arm so DMS follows the same switch.
+
+`hypridle.conf` itself is never edited — it is shared with the default and niri sessions, which keep their 5-minute dim, 10-minute hyprlock and resume handling exactly as before. Masking the unit is what takes it out of this session.
+
+Wallpaper is still `swww` + `waypaper` here, because it is entangled with `toggle-color-scheme`; moving it to `dms ipc call wallpaper` is a separate, optional step.
 
 ## Stages
 

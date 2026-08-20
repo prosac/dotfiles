@@ -22,6 +22,20 @@ sudo dnf -y copr enable {{ . | quote }}
 {{- end }}
 {{- end }}
 
+# Persistent dnf policy. `config-manager setopt` writes to
+# /etc/dnf/repos.override.d/ (per-repo) and /etc/dnf/dnf.conf's [main] (global),
+# so these outlive updates of the packages that own the .repo files. Runs after
+# the COPRs are enabled, because setopt requires the repo to exist.
+echo "==> dnf policy (global excludes + repo pins)..."
+{{- if .packages.dnfExclude }}
+sudo dnf -y config-manager setopt {{ printf "excludepkgs=%s" (join "," .packages.dnfExclude) | quote }}
+{{- end }}
+{{- if $f43plus }}
+{{- range .packages.repoOverridesF43Plus }}
+sudo dnf -y config-manager setopt {{ . | quote }}
+{{- end }}
+{{- end }}
+
 echo "==> dnf install (idempotent — already-installed packages report as such)..."
 packages=(
 {{- range .packages.dnf }}
