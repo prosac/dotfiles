@@ -1,0 +1,93 @@
+# /etc/pam.d/dms-fido2 — auth stack for the DankMaterialShell lock screen.
+#
+# Same stack as bootstrap/pam/hyprlock-fido2, for the same reasons, wired into
+# DMS instead of hyprlock. Kept as a SEPARATE file rather than pointing DMS at
+# hyprlock-fido2 so the two lock screens can diverge later without one silently
+# changing the other; the contents are deliberately identical today.
+#
+# WHY DMS USES THIS AT ALL — DMS is in "custom primary PAM" mode:
+#
+#     lockPamPath      = /etc/pam.d/dms-fido2
+#     lockPamInlineU2f = true
+#
+# DMS's own security-key handling (enableU2f / u2fMode) is left OFF. In its
+# native mode the key is a separate factor you start on demand with the passkey
+# button, which costs a keypress on every unlock; with an inline pam_u2f in the
+# primary stack, DMS sees `lockPamInlineU2f` and suppresses its own factor UI
+# (Pam.qml: `u2fSuppressedByPrimaryPam`), so the key is armed the instant the
+# screen locks and a bare touch unlocks — the behaviour hyprlock gives today.
+#
+# ⚠️ FAILURE MODE THAT IS SILENT AND MUST BE VERIFIED. DMS only uses this file
+# if it can actually READ it (Pam.qml: `customPamActive = lockPamPath !== "" &&
+# customPamWatcher.loaded`). If the file is missing or not world-readable, DMS
+# falls back through its chain to the service named `login` — i.e. straight into
+# the pam_sss double-prompt trap described below, with no error shown. So a
+# missing file does not lock you out, it degrades you to the old broken
+# behaviour. Verify with `mise run bootstrap:pam-dms`, which asserts the file is
+# in place and readable.
+#
+# WHY NOT the shipped `auth include login`: `login` pulls in system-auth, whose
+# authselect **sssd** profile appends, after pam_unix:
+#
+#     auth  sufficient  pam_sss.so forward_pass
+#
+# There is no SSSD domain on this machine, so that module only ever prompts for
+# the password a second time and fails. That is the "the FIDO stick is not active
+# until I hit Enter three times" symptom (diagnosed 2026-08-06):
+#
+#   1. locking starts a PAM transaction; pam_u2f arms the key immediately
+#   2. ~31s later the CTAP device timeout lapses and the u2f leg is spent; PAM
+#      falls through to pam_unix's "Password:" — the key is now dead, but the
+#      lock screen still says "touch key"
+#   3. returning minutes later, Enter #1 fails pam_unix, Enter #2 fails pam_sss,
+#      pam_deny ends the transaction, and only then does a fresh transaction
+#      re-arm the key — so the touch is the third interaction
+#
+# Dropping pam_sss makes one Enter enough. This also drops
+# `pam_faildelay delay=2000000` — a 2s penalty per failed attempt that a lock
+# screen has no use for — plus pam_env/pam_nologin/pam_securetty/pam_selinux,
+# none of which mean anything for unlocking an existing session.
+#
+# The ~31s window itself is NOT fixable here: it is a CTAP timeout in the
+# authenticator, and pam_u2f exposes no timeout option. NB hyprlock re-arms the
+# key by starting a fresh transaction (Pam.cpp:86-105); DMS has its own retry
+# timers (Pam.qml: errorRetry / u2fErrorRetry / passwdActiveTimeout) but whether
+# they re-arm on the same schedule is UNVERIFIED — if a stale lock screen ever
+# needs an extra Enter before the key responds, that is this window, not a
+# misconfiguration.
+#
+# `nodelay` on pam_unix, added 2026-08-20. Dropping pam_faildelay (above) removed
+# only the *stack's* penalty; pam_unix requests a delay-on-failure of its own —
+# "of the order of two seconds" per pam_unix(8) — and that one survived. It is
+# visible in every journal pair: the `authentication failure` line and hyprlock's
+# `auth: Authentication failed` sit 2-3s apart, and hyprlock only starts the next
+# transaction (which re-arms the key) after that. A touch during those 2s lands on
+# an unarmed key and is lost, which is the likeliest reason ~25% of unlocks in the
+# 8-day sample cost two to four submissions rather than one. A lock screen has no
+# use for a brute-force delay: there is no pam_faillock anywhere in this system's
+# stack, and an attacker at the lock screen is not rate-limited by 2s anyway.
+#
+# ORDER: pam_u2f first, so a bare touch unlocks and the key is armed the instant
+# the screen locks. pam_unix is `required` rather than `sufficient` so this stack
+# cannot silently pass, and carries no `nullok` — an empty submission must fail
+# (that failure is what re-arms the key).
+#
+# Nothing is given up relative to the login stack: there is no pam_faillock
+# anywhere in this system's PAM config. The `account` line is defensive, for a
+# PAM caller that runs pam_acct_mgmt.
+#
+# pam_u2f's own options live in /etc/security/pam_u2f.conf (userverification = 1,
+# i.e. the on-key fingerprint sensor of the Kensington VeriMark Guard must verify
+# the user, not merely that someone is present); see bootstrap/pam/pam_u2f.conf.
+# Options on a module line would override that file, so deliberately none are set
+# here beyond `cue`. The enrolled credential is ~/.config/Yubico/u2f_keys, which
+# is pam_u2f's default authfile — so no `authfile=` is needed either.
+#
+# Install via:  mise run bootstrap:pam-dms
+# Selected by:  lockPamPath in ~/.config/DankMaterialShell/settings.json
+# See ~/Documents/docs/hyprland-dms-quickshell-session.md
+
+auth        sufficient  pam_u2f.so cue
+auth        required    pam_unix.so nodelay
+
+account     required    pam_unix.so

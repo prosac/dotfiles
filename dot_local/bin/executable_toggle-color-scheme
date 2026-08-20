@@ -12,6 +12,7 @@
 #   - niri border colors                           -> ~/.config/niri/colors.kdl (niri session)
 #   - hyprlock colors                              -> ~/.config/hypr/hyprlock-colors.conf
 #   - Waybar CSS                                   -> ~/.config/waybar/style.css symlink + SIGUSR2
+#   - DankMaterialShell                            -> `dms ipc call theme` (DMS session)
 #   - Running ghostty sessions                     -> `term-ident retint`. ghostty's own
 #     theme follows the portal, but term-ident's per-session OSC-11 tint overrides
 #     the theme background and does NOT recompute itself, so it must be replayed.
@@ -102,6 +103,24 @@ layout {
 EOF
 }
 
+# Push the scheme into DankMaterialShell. Only fires in the "Hyprland (DMS)"
+# session, where DMS is the shell; a no-op in the default Hyprland and niri
+# sessions, exactly like write_niri_colors is a no-op outside niri.
+#
+# This script stays the single source of truth for color scheme. DMS ships its
+# own wallpaper-derived Material 3 theming over the same territory (GTK, Qt,
+# terminals, editors) but its matugen templates are switched off in
+# ~/.config/DankMaterialShell/settings.json, so `theme dark|light` here only
+# re-tints DMS's own surfaces — it does not fan out and fight this script.
+#
+# The is-active test is not just an optimisation: the `dms` binary is installed
+# system-wide, so without it every flip in the default session would spawn a
+# `dms ipc call` that then fails to reach a shell.
+sync_dms() {  # $1=dark|light
+    systemctl --user is-active --quiet dms.service 2>/dev/null || return 0
+    dms ipc call theme "$1" >/dev/null 2>&1 || true
+}
+
 # Rewrite both GTK settings.ini files. This — not gsettings — is what plain GTK3
 # apps read for light/dark, since no settings daemon runs under Hyprland/niri.
 # GtkSettings monitors the file, so running apps re-theme without a restart.
@@ -161,6 +180,7 @@ apply_dark() {
     write_hyprlock_colors "$DARK_LOCK_BRIGHT" "$DARK_LOCK_OUTER" "$DARK_LOCK_INNER" \
                           "$DARK_LOCK_FONT" "$DARK_LOCK_FONT_DIM"
     ln -sfn style-dark.css "$WAYBAR_DIR/style.css"
+    sync_dms dark
 }
 
 apply_light() {
@@ -174,6 +194,7 @@ apply_light() {
     write_hyprlock_colors "$LIGHT_LOCK_BRIGHT" "$LIGHT_LOCK_OUTER" "$LIGHT_LOCK_INNER" \
                           "$LIGHT_LOCK_FONT" "$LIGHT_LOCK_FONT_DIM"
     ln -sfn style-light.css "$WAYBAR_DIR/style.css"
+    sync_dms light
 }
 
 reload_waybar() {

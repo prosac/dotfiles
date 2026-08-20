@@ -33,6 +33,42 @@ packages:
   # COPRs enabled only on Fedora 43+ (no F42 chroot).
   coprF43Plus:
     - errornointernet/walker
+    # DankMaterialShell (the "Hyprland (DMS)" session — see PLAYBOOK.md).
+    # danklinux ships quickshell 0.3.x (Terra only has 0.2.1, too old for
+    # Quickshell.Networking/Bluetooth/Services.Polkit that DMS needs);
+    # dms ships dms + dms-cli + dgop.
+    - avengemedia/danklinux
+    - avengemedia/dms
+
+  # Packages this host must never install, applied as a global dnf
+  # `excludepkgs`. Global rather than per-repo because a package can be
+  # reachable from more than one repo (matugen is in both Terra and the
+  # danklinux COPR), and a weak dependency will happily pull it from
+  # whichever one is left.
+  #
+  # matugen: DMS ships wallpaper-derived Material 3 theming and every template
+  # flag defaults to ON (matugenTemplateGtk / Hyprland / Ghostty / Qt6ct /
+  # Emacs / Vscode ...). That is exactly the territory toggle-color-scheme owns
+  # as the single source of truth, and several of those templates write files
+  # chezmoi manages — so it would cause drift in the DEFAULT session too, not
+  # just in the DMS one. DMS only `Recommends:` it, so excluding it costs
+  # nothing. Belt-and-braces: the DMS settings seed also sets
+  # runDmsMatugenTemplates/runUserMatugenTemplates to false.
+  dnfExclude:
+    - matugen
+
+  # Persistent per-repo dnf option overrides, applied after the COPRs are
+  # enabled. `dnf config-manager setopt` writes these to
+  # /etc/dnf/repos.override.d/, NOT into the .repo files themselves, so they
+  # survive updates of the packages that own those files (e.g. terra-release).
+  #
+  # terra.excludepkgs=quickshell*: Terra and the danklinux COPR both ship
+  # quickshell (0.2.1 vs 0.3.0). dnf picks the higher version, so DMS works
+  # today by luck; if Terra ever ships a newer quickshell than the COPR, DMS
+  # would silently get an untested toolkit. Pinning the source makes a bad
+  # upgrade a loud install failure instead of a silent breakage.
+  repoOverridesF43Plus:
+    - terra.excludepkgs=quickshell*
 
   # dnf packages installed on every Fedora.
   dnf:
@@ -108,6 +144,19 @@ packages:
   dnfF43Plus:
     - walker
     - elephant
+
+    # DankMaterialShell — the Quickshell desktop used by the "Hyprland (DMS)"
+    # session only. Installing these changes nothing for the default Hyprland
+    # or niri sessions: dms.service is persistently disabled (see the
+    # `bootstrap:dms-session` mise task) and only runtime-enabled by
+    # ~/.local/bin/hyprland-dms.
+    #
+    # `matugen` is deliberately NOT here, and is globally excluded below.
+    - dms
+    - dms-cli
+    - dgop
+    - quickshell
+    - material-symbols-fonts
 
   # Fedora 42 only — SRPM rebuild toolchain (the rebuild itself runs in
   # run_onchange_after_install-packages.sh.tmpl).

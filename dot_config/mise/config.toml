@@ -202,6 +202,34 @@ done
 [ "$found" = 1 ] || echo "  (no Wacom tablet currently connected)"
 '''
 
+[tasks."bootstrap:pam-dms"]
+description = "Install /etc/pam.d/dms-fido2 (FIDO2 auth stack for the DMS lock screen; asks for sudo)"
+run = '''
+set -e
+src="$(chezmoi source-path)/bootstrap/pam/dms-fido2"
+sudo install -m 644 -o root -g root "$src" /etc/pam.d/dms-fido2
+echo "Installed: /etc/pam.d/dms-fido2"
+echo "Effective stack:"
+grep -vE '^\s*#|^\s*$' /etc/pam.d/dms-fido2 | sed 's/^/  /'
+# DMS only uses this file if it can READ it as the logged-in user; if it cannot,
+# it silently falls back to the `login` service and its pam_sss double prompt.
+# So assert readability as the user, not just that the install succeeded.
+echo "Readable by $(id -un) (required, else DMS silently falls back to \`login\`):"
+if head -1 /etc/pam.d/dms-fido2 >/dev/null 2>&1; then echo "  yes"; else echo "  NO — DMS will fall back to \`login\`"; exit 1; fi
+# And assert the settings file actually points here, since a mismatch is silent too.
+echo "settings.json lockPamPath:"
+python3 - <<'EOF' || true
+import json, pathlib
+p = pathlib.Path.home() / ".config/DankMaterialShell/settings.json"
+if not p.exists():
+    print("  settings.json not present yet (created on first DMS run)")
+else:
+    v = json.loads(p.read_text()).get("lockPamPath", "")
+    ok = v == "/etc/pam.d/dms-fido2"
+    print(f"  {v!r} {'(matches)' if ok else '(MISMATCH — the key will not be armed)'}")
+EOF
+'''
+
 [tasks."bootstrap:dms-session"]
 description = "Install the 'Hyprland (DMS)' wayland session entry (sudo install + disable dms.service in default Hyprland)"
 run = '''
