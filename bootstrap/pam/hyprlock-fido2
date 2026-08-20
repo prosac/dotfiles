@@ -34,6 +34,17 @@
 # The ~31s window itself is NOT fixable here: it is a CTAP timeout in the
 # authenticator, and pam_u2f exposes no timeout option.
 #
+#
+# `nodelay` on pam_unix, added 2026-08-20. Dropping pam_faildelay (above) removed
+# only the *stack's* penalty; pam_unix requests a delay-on-failure of its own —
+# "of the order of two seconds" per pam_unix(8) — and that one survived. It is
+# visible in every journal pair: the `authentication failure` line and hyprlock's
+# `auth: Authentication failed` sit 2-3s apart, and hyprlock only starts the next
+# transaction (which re-arms the key) after that. A touch during those 2s lands on
+# an unarmed key and is lost, which is the likeliest reason ~25% of unlocks in the
+# 8-day sample cost two to four submissions rather than one. A lock screen has no
+# use for a brute-force delay: there is no pam_faillock anywhere in this system's
+# stack, and an attacker at the lock screen is not rate-limited by 2s anyway.
 # ORDER: pam_u2f first, so a bare touch unlocks and the key is armed the instant
 # the screen locks. pam_unix is `required` rather than `sufficient` so this stack
 # cannot silently pass, and carries no `nullok` — an empty submission must fail
@@ -54,6 +65,6 @@
 # See ~/Documents/docs/fido2-login-latency-power-management.md
 
 auth        sufficient  pam_u2f.so cue
-auth        required    pam_unix.so
+auth        required    pam_unix.so nodelay
 
 account     required    pam_unix.so
