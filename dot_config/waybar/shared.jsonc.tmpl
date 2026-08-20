@@ -23,7 +23,8 @@
         "network",
         "battery",
         "clock",
-        "tray"
+        "tray",
+        "custom/power"
     ],
 
     "custom/gradia": {
@@ -107,5 +108,16 @@
     "tray": {
         "spacing": 8,
         "icon-size": 16
+    },
+
+    // The only visible way out of a session. The keybinds (Super+Shift+E,
+    // Ctrl+Alt+Delete under niri) open the same menu, which resolves the
+    // correct teardown for whichever session manager is running -- see the
+    // script's docstring for why the compositor's own exit is not it.
+    "custom/power": {
+        "format": "⏻",
+        "tooltip": true,
+        "tooltip-format": "session menu (lock, log out, suspend, …)",
+        "on-click": "{{ .chezmoi.homeDir }}/.local/bin/session-menu"
     }
 }

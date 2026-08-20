@@ -32,6 +32,7 @@ window#waybar {
 #tray,
 #custom-color-scheme,
 #custom-displays,
+#custom-power,
 #backlight {
     padding: 0 8px;
     background: transparent;

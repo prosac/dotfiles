@@ -177,8 +177,12 @@ binds {
     Mod+Ctrl+Escape hotkey-overlay-title="Hibernate (packing away)" { spawn-sh "{{ .chezmoi.homeDir }}/.local/bin/hibernate-now"; }
     Mod+Shift+T hotkey-overlay-title="Toggle color scheme" { spawn-sh "{{ .chezmoi.homeDir }}/.local/bin/toggle-color-scheme"; }
     Mod+G hotkey-overlay-title="Open project (banner)" { spawn-sh "{{ .chezmoi.homeDir }}/.local/bin/term-project"; }
-    Mod+Shift+E { quit; }
-    Ctrl+Alt+Delete { quit; }
+    // Session menu, not a bare `quit` -- one script owns "how does this
+    // session actually come down" for Hyprland-under-uwsm and niri alike, and
+    // it doubles as the confirmation these two keys never had. niri's own quit
+    // prompt is skipped inside it for exactly that reason.
+    Mod+Shift+E hotkey-overlay-title="Session menu" { spawn-sh "{{ .chezmoi.homeDir }}/.local/bin/session-menu"; }
+    Ctrl+Alt+Delete hotkey-overlay-title="Session menu" { spawn-sh "{{ .chezmoi.homeDir }}/.local/bin/session-menu"; }
 
     // Focus — vim hjkl. H/L cross to the adjacent monitor at a column edge,
     // replicating Hyprland's movefocus crossing screens.

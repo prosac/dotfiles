@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Session/power menu: pick an action in `walker --dmenu`, then run it.
+
+WHY THIS EXISTS
+
+Until this, the only way out of a session was a bare keybind -- `exit` in
+hyprland.conf, `quit` in niri -- with no visible affordance anywhere, and in the
+Hyprland case the wrong mechanism. Both Hyprland sessions ("Hyprland" and
+"Hyprland (DMS)") are started through uwsm, whose README is explicit:
+
+    Do not use compositor's native exit mechanism or kill its process
+    directly, this will yank compositor from under all the clients and
+    interfere with ordered unit deactivation sequence.
+        -- /usr/share/doc/uwsm/README.md
+
+So "log out" is resolved at RUNTIME rather than hard-coded per compositor: ask
+uwsm first, then niri's own IPC, and finally `loginctl terminate-session`, which
+ends the login session whatever started it. That ordering means this one script
+is correct in the default Hyprland session, the DMS session, the niri session,
+and a hypothetical non-uwsm Hyprland alike -- and stays correct if the session
+file changes underneath it.
+
+WALKER, NOT A DEDICATED LOGOUT SCREEN
+
+walker is already the launcher in both sessions, so `--dmenu` inherits its theme
+and this needs no styling, no extra package and no second thing to keep in sync
+with toggle-color-scheme. Same idiom as ~/.local/bin/term-project.
+
+THE MENU IS THE CONFIRMATION
+
+Nothing here asks twice -- picking "Shut down" shuts down. That is why Lock
+sorts first and the destructive entries sort last: the cursor starts on the
+harmless one.
+
+Hibernate delegates to ~/.local/bin/hibernate-now rather than calling
+`systemctl hibernate` directly, because that script paints the lock screen
+first: the ~25s image write is otherwise indistinguishable from a hang.
+
+None of the systemctl calls use sudo, on purpose -- as the session user polkit
+grants them under allow_active; under sudo the D-Bus caller is root, which does
+not own the session, and the call fails with a bare "Access denied".
+
+Runs in the GUI-session PATH (/usr/local/bin:/usr/bin), so ~/.local/bin tools
+are invoked by absolute path. stderr is inherited rather than discarded, so a
+failed action lands in the log of whatever spawned the menu (the compositor for
+a keybind, waybar for the bar button).
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+
+HOME = os.path.expanduser("~")
+HIBERNATE_NOW = os.path.join(HOME, ".local/bin/hibernate-now")
+
+
+def uwsm_manages_this_session() -> bool:
+    """`uwsm check is-active` exits 0 while a uwsm-started compositor runs.
+
+    Asking uwsm beats sniffing env vars or unit names: it is uwsm's own
+    published predicate, and it answers false in a session uwsm did not start
+    even though the binary is installed.
+    """
+    try:
+        return subprocess.run(["uwsm", "check", "is-active"], check=False).returncode == 0
+    except OSError:
+        return False  # uwsm not installed at all
+
+
+def logout_command() -> list[str]:
+    """The session-manager teardown for whatever is actually running here."""
+    if uwsm_manages_this_session():
+        return ["uwsm", "stop"]
+    if os.environ.get("NIRI_SOCKET"):
+        # niri's own quit prompts for Enter; this menu was the confirmation.
+        return ["niri", "msg", "action", "quit", "--skip-confirmation"]
+    session_id = os.environ.get("XDG_SESSION_ID")
+    if session_id:
+        return ["loginctl", "terminate-session", session_id]
+    return ["loginctl", "terminate-user", str(os.getuid())]
+
+
+# Insertion order is menu order.
+ACTIONS = {
+    "Lock": lambda: ["loginctl", "lock-session"],
+    "Log out": logout_command,
+    "Suspend": lambda: ["systemctl", "suspend"],
+    "Hibernate": lambda: [HIBERNATE_NOW],
+    "Reboot": lambda: ["systemctl", "reboot"],
+    "Shut down": lambda: ["systemctl", "poweroff"],
+}
+
+
+def pick(entries: list[str]) -> str | None:
+    try:
+        r = subprocess.run(["walker", "--dmenu", "--placeholder", "session"],
+                           input="\n".join(entries), capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout.strip() or None
+
+
+def main() -> int:
+    choice = pick(list(ACTIONS))
+    if choice not in ACTIONS:
+        return 0  # dismissed, or an answer we never offered
+    subprocess.Popen(ACTIONS[choice](), start_new_session=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
