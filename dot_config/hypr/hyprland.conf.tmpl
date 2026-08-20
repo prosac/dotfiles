@@ -414,7 +414,15 @@ bind = $mainMod SHIFT, Tab, hyprtasking:toggle, all
 # together on Space ($menu on Super+Space, kando on Super+SHIFT+Space).
 bind = $mainMod SHIFT, Space, exec, kando -m "Example Menu"
 bind = $mainMod, Q, killactive,
-bind = $mainMod SHIFT, E, exit,
+# Session menu (lock / log out / suspend / hibernate / reboot / shut down).
+# NOT `exit`, which this used to be: this session runs under uwsm, whose README
+# says in as many words not to use the compositor's native exit mechanism --
+# it yanks the compositor out from under its clients and skips the ordered unit
+# deactivation. session-menu resolves the right teardown at runtime instead
+# (uwsm stop here, niri IPC there, loginctl terminate-session otherwise), so the
+# same key is correct in the default, DMS and niri sessions. The menu is also
+# the confirmation step this key never had.
+bind = $mainMod SHIFT, E, exec, ~/.local/bin/session-menu
 bind = $mainMod, E, exec, $fileManager
 bind = $mainMod, W, exec, waypaper          # wallpaper picker GUI (swww backend)
 bind = $mainMod, F, fullscreen,
