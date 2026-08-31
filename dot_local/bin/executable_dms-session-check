@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""Verify a "Hyprland (DMS)" session came up correctly.
+
+Run this after logging into the DMS session. It checks the things that have
+actually gone wrong here, each of which failed SILENTLY the first time:
+
+  * the seven superseded units are really `masked-runtime`, not merely
+    symlinked-and-ignored -- `systemctl --runtime mask` writes below
+    ~/.config/systemd/user/ in the unit search path, so the mask is a no-op and
+    the unit still reports `enabled` and starts. That is what put waybar on top
+    of the DMS bar.
+  * DMS actually OWNS org.freedesktop.Notifications. dms.service is
+    `Type=dbus BusName=org.freedesktop.Notifications`, so systemd reports it
+    active whenever that name exists -- even when a rival daemon owns it. A green
+    `is-active` proves nothing; the owning cgroup does.
+  * dms-session-cleanup.service is active, because a oneshot that never started
+    can never run its ExecStop= and is therefore not a safety net.
+
+Exit status is 0 only if every check passes, so this is usable from a task.
+"""
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+MASKED_UNITS = [
+    "waybar.service",
+    "wayland-noti.service",
+    "swayosd.service",
+    "polkit-mate-authentication-agent-1.service",
+    "nm-applet.service",
+    "elephant.service",
+    "hypridle.service",
+]
+ACTIVE_UNITS = ["dms.service", "dms-binds.service", "dms-session-cleanup.service"]
+
+GREEN, RED, YELLOW, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[0m"
+if not sys.stdout.isatty():
+    GREEN = RED = YELLOW = RESET = ""
+
+failures: list[str] = []
+
+
+def run(*args: str) -> str:
+    return subprocess.run(
+        args, capture_output=True, text=True, check=False
+    ).stdout.strip()
+
+
+def check(ok: bool, label: str, detail: str, *, warn_only: bool = False) -> None:
+    if ok:
+        print(f"  {GREEN}PASS{RESET}  {label:<44} {detail}")
+    elif warn_only:
+        print(f"  {YELLOW}WARN{RESET}  {label:<44} {detail}")
+    else:
+        print(f"  {RED}FAIL{RESET}  {label:<44} {detail}")
+        failures.append(label)
+
+
+def unit_file_state(unit: str) -> str:
+    return run("systemctl", "--user", "show", "-p", "UnitFileState", "--value", unit)
+
+
+def is_active(unit: str) -> str:
+    return run("systemctl", "--user", "is-active", unit) or "unknown"
+
+
+def main() -> int:
+    in_dms = bool(run("pgrep", "-f", "bin/hyprland-dms$"))
+    print("\nSession")
+    check(
+        in_dms,
+        "hyprland-dms wrapper is the session leader",
+        "yes" if in_dms else "NOT a DMS session -- the rest will fail by design",
+        warn_only=not in_dms,
+    )
+    if not in_dms:
+        print("\n(Log into \"Hyprland (DMS)\" at the greeter, then re-run.)\n")
+        return 0
+
+    print("\nSuperseded units (want: masked-runtime + inactive)")
+    for unit in MASKED_UNITS:
+        state, active = unit_file_state(unit), is_active(unit)
+        check(
+            state == "masked-runtime" and active == "inactive",
+            unit,
+            f"{state} / {active}",
+        )
+
+    print("\nDMS units (want: active)")
+    for unit in ACTIVE_UNITS:
+        active = is_active(unit)
+        check(active == "active", unit, active)
+
+    print("\nNotification ownership (the Type=dbus trap)")
+    owner = run("busctl", "--user", "status", "org.freedesktop.Notifications")
+    cgroup = next(
+        (ln.split("=", 1)[1] for ln in owner.splitlines() if ln.startswith("CGroup=")),
+        "",
+    )
+    check(
+        cgroup.endswith("dms.service"),
+        "org.freedesktop.Notifications owner",
+        cgroup.rsplit("/", 1)[-1] or "nobody",
+    )
+
+    print("\nNo leftovers")
+    stray = run("pgrep", "-c", "-x", "waybar") or "0"
+    check(stray == "0", "waybar processes", stray)
+
+    print("\nEnvironment")
+    linger = run("loginctl", "show-user", os.environ.get("USER", "jo"), "-p", "Linger", "--value")
+    check(
+        True,
+        "Linger",
+        f"{linger} (either value is safe: dms-session-cleanup clears masks at teardown)",
+    )
+
+    settings = Path.home() / ".config/DankMaterialShell/settings.json"
+    try:
+        data = json.loads(settings.read_text())
+        icons = data.get("workspaceNameIcons") or {}
+        check(
+            bool(icons) and data.get("showWorkspaceName") is True,
+            "workspace pills (name + monochrome glyph)",
+            f"{len(icons)} glyph(s), showWorkspaceName={data.get('showWorkspaceName')}",
+            warn_only=True,
+        )
+    except (OSError, ValueError) as exc:
+        check(False, "DankMaterialShell settings.json", str(exc), warn_only=True)
+
+    if failures:
+        print(f"\n{RED}{len(failures)} check(s) failed:{RESET} {', '.join(failures)}\n")
+        return 1
+    print(f"\n{GREEN}All checks passed.{RESET}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
