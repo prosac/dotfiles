@@ -9,6 +9,13 @@ setting changes, and it can even flip the file read-only). Shipping it as a
 plain chezmoi file would turn every DMS settings change into permanent drift.
 Same precedent as dot_config/niri/create_colors.kdl.
 
+`private_` prefix (i.e. mode 0600): NOT a secrecy claim, a drift fix. `create_`
+stops chezmoi rewriting the CONTENT but it still asserts the MODE on every
+apply, and DMS writes this file back as 0600. Without the prefix, `chezmoi
+status` reported a permanent `MM` on settings.json that no amount of re-adding
+could clear, which is exactly the kind of standing noise that hides a real diff.
+0600 is what the file actually is, so declare that.
+
 Because DMS rewrites it, this is a partial file on purpose: SettingsStore.parse()
 applies only the keys present here and leaves every other property at its QML
 default. `configVersion` is deliberately OMITTED — DMS 1.5.3 is at config
