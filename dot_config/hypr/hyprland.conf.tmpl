@@ -98,14 +98,14 @@ exec-once = hyprctl plugin load ~/.local/src/hyprtasking/build/libhyprtasking.so
 # so the visual state matches gsettings on every login.
 exec-once = ~/.local/bin/toggle-color-scheme --apply
 
-# Wallpaper: the swww daemon and wallpaper restore run as systemd user services
-# (swww.service + waypaper.service). waypaper.service is ordered After=swww.service,
-# and swww.service only reports active once its socket answers, so the daemon is
-# guaranteed ready before `waypaper --restore` issues `swww img` (no sleep race).
-# Super+W still opens the waypaper GUI. `swww`/`swww-daemon` are /usr/local/bin
-# shims for the awww binaries. Terra's awww carries `Obsoletes: swww < 0.11.2-2`
-# but NOT `Provides: swww`, so installing it takes the swww/swww-daemon binaries
-# away without putting anything back under those names -- hence the shims.
+# Wallpaper: the awww daemon and wallpaper restore run as systemd user services
+# (awww.service + waypaper.service). waypaper.service is ordered After=awww.service,
+# and awww.service only reports active once its socket answers, so the daemon is
+# guaranteed ready before `waypaper --restore` sets the image (no sleep race).
+# Super+W opens the waypaper GUI. Terra's awww Obsoletes swww without Providing
+# it, so there is no swww binary; waypaper's native `awww` backend is used rather
+# than /usr/local/bin shims, which gave one daemon two names and let waypaper
+# start a second one on top of this unit. See awww.service for that failure.
 # See ~/Documents/docs/hyprland-wallpaper-waypaper-setup.md
 
 
@@ -426,7 +426,7 @@ bind = $mainMod, Q, killactive,
 # the confirmation step this key never had.
 bind = $mainMod SHIFT, E, exec, ~/.local/bin/session-menu
 bind = $mainMod, E, exec, $fileManager
-bind = $mainMod, W, exec, waypaper          # wallpaper picker GUI (swww backend)
+bind = $mainMod, W, exec, waypaper          # wallpaper picker GUI (awww backend)
 bind = $mainMod, F, fullscreen,
 bind = $mainMod, M, fullscreen, 1
 bind = $mainMod, V, togglefloating,

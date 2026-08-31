@@ -3,7 +3,7 @@
 // This is the niri counterpart of ~/.config/hypr/hyprland.conf. Where it made
 // sense, settings, keybinds and the shared daemon stack mirror the Hyprland
 // session 1:1 (same Super-based keymap, same ghostty/walker/kando/waypaper, same
-// waybar + swww + swayosd + hyprlock + hypridle, same steel-blue→teal palette).
+// waybar + awww + swayosd + hyprlock + hypridle, same steel-blue→teal palette).
 // Where niri's scrollable-tiling model differs from Hyprland's fixed workspaces,
 // this config leans into niri (named workspaces + native multi-monitor) — the
 // "hybrid" approach: familiar Super+1..6 keys, niri-native output handling.
@@ -104,7 +104,7 @@ screenshot-path "~/Pictures/Screenshot from %Y-%m-%d %H-%M-%S.png"
 // exec-once). Absolute path: ~/.local/bin is not on the GUI session PATH.
 spawn-sh-at-startup "{{ .chezmoi.homeDir }}/.local/bin/toggle-color-scheme --apply"
 
-// The rest of the session stack (waybar, swww, waypaper, swayosd, elephant,
+// The rest of the session stack (waybar, awww, waypaper, swayosd, elephant,
 // kando, nm-applet, polkit, noti, hypridle-niri, hyprlock) runs as systemd user
 // services bound to graphical-session.target — niri.service BindsTo it — so they
 // are NOT spawned here. See dot_config/systemd/user/.

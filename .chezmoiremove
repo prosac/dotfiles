@@ -1,0 +1,11 @@
+# Targets chezmoi should DELETE from $HOME. chezmoi does not remove a file just
+# because the source stopped managing it, so a renamed unit would otherwise sit
+# in ~/.config/systemd/user/ forever -- still enabled, still pulled into
+# graphical-session.target, and now pointing at an ExecStart that no longer
+# exists on a machine that never had the shims.
+#
+# swww.service -> awww.service (2026-08-31): the unit was renamed when the
+# /usr/local/bin/swww* shims were dropped in favour of waypaper's native awww
+# backend. Disable it before the rename lands, or the stale
+# graphical-session.target.wants/ symlink outlives the file it points at.
+.config/systemd/user/swww.service
