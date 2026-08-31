@@ -64,16 +64,16 @@ enable_unit() {
 # each carries a ConditionEnvironment gate so only the one matching the live
 # session ever starts. Same for the rest — they're shared across both sessions.
 #
-# Wallpaper is swww.service + waypaper.service, NOT hyprpaper: waypaper.service
-# is ordered After=swww.service and swww.service only reports active once its
+# Wallpaper is awww.service + waypaper.service, NOT hyprpaper: waypaper.service
+# is ordered After=awww.service and awww.service only reports active once its
 # socket answers, so `waypaper --restore` cannot race the daemon. hyprpaper is
 # the superseded stack — it is a distro unit, not managed here, and enabling it
-# alongside swww would leave two wallpaper daemons fighting over the output.
+# alongside awww would leave two wallpaper daemons fighting over the output.
 # See ~/Documents/docs/hyprland-wallpaper-waypaper-setup.md.
 SESSION_UNITS=(
   elephant.service
   waybar.service
-  swww.service
+  awww.service
   waypaper.service
   hypridle.service
   hypridle-niri.service

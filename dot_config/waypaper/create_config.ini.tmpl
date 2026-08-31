@@ -2,16 +2,24 @@
 # waypaper at runtime. Editing this source will NOT overwrite an existing
 # ~/.config/waypaper/config.ini; delete the target first if you want to re-seed.
 #
-# backend = swww  -> drives `swww`/`swww-daemon`, which are /usr/local/bin shims
-#                    pointing at the awww binaries. Terra's awww has
-#                    `Obsoletes: swww` but no `Provides: swww`, so the binaries
-#                    vanish under that name; awww's CLI is swww-compatible.
+# backend = awww  -> waypaper's native awww backend (changer.py:change_with_awww),
+#                    calling /usr/bin/awww directly. Do NOT set this to `swww`:
+#                    Terra's awww Obsoletes swww without Providing it, so there is
+#                    no swww binary, and papering over that with /usr/local/bin
+#                    shims gave ONE daemon TWO names -- which broke waypaper's
+#                    `pgrep`-based duplicate detection and let it start a second
+#                    daemon on top of the systemd-managed one. See awww.service.
+#                    The swww_transition_* keys below are shared by both backends.
+#
+# ⚠️ use_xdg_state makes ~/.local/state/waypaper/ the WINNER for `backend` and
+#    `folder`: config.py reads this file first (line ~105) and the state file
+#    second (line ~157), overwriting. A backend set here alone does not stick.
 # use_xdg_state   -> keeps the per-monitor wallpaper selection in
 #                    ~/.local/state/waypaper/ instead of rewriting this file,
 #                    so the config stays stable and chezmoi-friendly.
 [Settings]
 folder = {{ .chezmoi.homeDir }}/Pictures/wallpapers
-backend = swww
+backend = awww
 fill = fill
 sort = name
 color = #ffffff

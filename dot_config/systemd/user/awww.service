@@ -1,0 +1,36 @@
+[Unit]
+Description=awww wallpaper daemon
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+ConditionEnvironment=|XDG_CURRENT_DESKTOP=Hyprland
+ConditionEnvironment=|XDG_CURRENT_DESKTOP=niri
+
+[Service]
+Type=simple
+# /usr/bin/awww-daemon directly -- NOT a /usr/local/bin/swww-daemon shim.
+#
+# This unit used to exec a shim symlinked to this same binary, because waypaper's
+# `swww` backend hard-codes the swww command names. That made ONE binary reachable
+# under TWO names, and waypaper detects an already-running daemon with `pgrep
+# <name>`: running as `swww-daemon` here while waypaper's live backend was `awww`
+# meant `pgrep awww-daemon` found nothing, so waypaper started a SECOND daemon.
+# Two daemons on one wayland layer produce "failed to find wayland buffer" and
+# then a SIGABRT -- cored 2026-06-08 and again 2026-08-20. The survivor was an
+# orphan outside systemd, and because the loser exited 0, Restart=on-failure
+# never fired and this unit simply stayed dead.
+#
+# waypaper >= 2.x has a first-class `awww` backend (changer.py:change_with_awww)
+# using the same swww_transition_* settings, so the shims buy nothing. One binary,
+# one name, and waypaper's own duplicate detection works.
+ExecStart=/usr/bin/awww-daemon
+# Don't report active until the daemon's socket answers, so units ordered
+# After=awww.service (e.g. waypaper.service) get a genuinely ready daemon
+# instead of racing it. Replaces the old `sleep 1` hack in hyprland.conf.
+ExecStartPost=/bin/sh -c 'until /usr/bin/awww query >/dev/null 2>&1; do sleep 0.1; done'
+Restart=on-failure
+RestartSec=2
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target
