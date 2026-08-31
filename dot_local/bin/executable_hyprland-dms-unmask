@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Clear the runtime unit masks that the DMS session installs.
+
+WHY THIS EXISTS AS A SEPARATE, SYSTEMD-DRIVEN STEP
+
+~/.local/bin/hyprland-dms masks the units DMS supersedes (waybar, wayland-noti,
+swayosd, nm-applet, elephant, mate-polkit, hypridle) by dropping /dev/null
+symlinks into $XDG_RUNTIME_DIR/systemd/user.control/.  See that script for why
+that directory and not `systemctl --runtime mask`.
+
+Those masks are GLOBAL.  systemd has no per-session masking: the seven units are
+shared by the default Hyprland session, the niri session and the DMS session
+alike, and a mask applies to all of them.  The original design substituted
+*short lifetime* for scoping -- the mask is global, but user.control lives under
+/run and dies with the user manager, so it cannot outlive the login that made it.
+
+⚠️ THAT SUBSTITUTION FAILS THE MOMENT LINGERING IS ENABLED.  `loginctl
+enable-linger` keeps user@$UID.service alive with nobody logged in -- which is
+exactly what a user-scoped rootless k3s (k3s-rootless.service) wants if the
+cluster is to outlive a logout or come up at boot.  With the manager surviving,
+/run/user/$UID survives, the seven symlinks survive, and the NEXT login -- to the
+*default* Hyprland session or to niri -- comes up with no bar, no notifications,
+no OSD, no tray, no launcher backend, no polkit agent and no idle/lock.  It fails
+silently: nothing errors, no unit fails, the units simply never start.  The last
+two are security-relevant, not cosmetic -- privileged prompts never appear and
+the screen never locks.
+
+So the cleanup must not rest on the manager dying.  dms-session-cleanup.service
+calls this script from ExecStop=, so systemd runs it when
+graphical-session.target goes down -- at every logout, whether or not lingering
+is on, and whether or not hyprland-dms's own bash EXIT trap fired.  That last
+part is an improvement even with lingering off: a SIGKILL of the wrapper skips
+its trap, and today nothing else would clean up.
+
+The residual hole is a hard kill of the user manager itself (SIGKILL to
+user@$UID.service), where no ExecStop runs.  That is not a desktop/k3s conflict:
+it takes the cluster down too.
+
+DERIVING THE LIST RATHER THAN DUPLICATING IT
+
+The unit names are deliberately NOT repeated here.  Anything in user.control that
+is a symlink to /dev/null is a mask this session installed, so clearing exactly
+those keeps one source of truth (hyprland-dms's MASK_UNITS) and also cleans up
+after a previous session that died without unmasking.
+
+`systemctl --user set-property --runtime` is the other writer of this directory,
+but it writes <unit>.d/ DIRECTORIES, never symlinks -- so restricting to
+symlinks-that-point-at-/dev/null cannot disturb anything else's state.
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+def control_dir() -> Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return Path(runtime) / "systemd" / "user.control"
+
+
+def find_masks(directory: Path) -> list[Path]:
+    if not directory.is_dir():
+        return []
+    return sorted(
+        entry
+        for entry in directory.iterdir()
+        if entry.is_symlink() and os.readlink(entry) == "/dev/null"
+    )
+
+
+def daemon_reload() -> None:
+    # Never fatal: a failed reload leaves the symlinks gone, which is the state we
+    # want; the next reload or the next login picks it up.
+    subprocess.run(
+        ["systemctl", "--user", "daemon-reload"],
+        check=False,
+        capture_output=True,
+    )
+
+
+def report(masks: list[Path], directory: Path) -> None:
+    if masks:
+        names = " ".join(m.name for m in masks)
+        print(f"armed: {len(masks)} unit mask(s) in {directory}: {names}")
+    else:
+        print(f"armed: no unit masks present in {directory}")
+
+
+def clear(masks: list[Path]) -> None:
+    if not masks:
+        print("no unit masks to clear")
+        return
+    removed = []
+    for mask in masks:
+        try:
+            mask.unlink()
+            removed.append(mask.name)
+        except OSError as exc:
+            print(f"could not remove {mask}: {exc}", file=sys.stderr)
+    if removed:
+        print(f"cleared {len(removed)} unit mask(s): {' '.join(removed)}")
+        daemon_reload()
+
+
+def main(argv: list[str]) -> int:
+    mode = argv[1] if len(argv) > 1 else "clear"
+    if mode not in ("clear", "--report"):
+        print(f"usage: {Path(argv[0]).name} [--report]", file=sys.stderr)
+        return 2
+
+    directory = control_dir()
+    masks = find_masks(directory)
+
+    if mode == "--report":
+        report(masks, directory)
+    else:
+        clear(masks)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

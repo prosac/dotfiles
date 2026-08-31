@@ -11,22 +11,57 @@
 # A *second Hyprland* session cannot use that lever: it must keep announcing
 # DesktopNames=Hyprland or xdg-desktop-portal-hyprland stops matching and
 # screen-sharing/file-pickers break. So the switch is made in systemd's runtime
-# tree instead — `--runtime mask` and `--runtime enable` write into
-# /run/user/$UID/systemd/user/, which is destroyed when the user's systemd
-# manager exits. `loginctl show-user $USER -p Linger` is `no`, so the manager
-# really does exit at logout and these overrides really do vanish.
+# tree instead: under /run/user/$UID/systemd/, which is destroyed when the user's
+# systemd manager exits. Note that this is a convenience, NOT the guarantee — see
+# the lingering block below for why cleanup no longer depends on it.
 #
-# The isolation guarantee therefore does NOT rest on the trap below firing: even
-# a SIGKILL of this session leaves the default session clean, because the state
-# lives in /run and in the running Hyprland instance, both of which die with the
-# session. The trap only makes the cleanup happen sooner.
+# ⚠️ THE MASKS DO **NOT** GO THROUGH `systemctl --runtime mask`. That writes to
+# /run/user/$UID/systemd/user/, which is rank 8 in the user unit search path
+# (`systemd-analyze --user unit-paths`) — BELOW ~/.config/systemd/user/ at rank 5,
+# which is where every unit in MASK_UNITS actually lives as a chezmoi-managed
+# file. The /dev/null symlink is therefore shadowed by the real unit file and the
+# mask is a SILENT no-op: `systemctl mask` prints nothing, the symlink is created,
+# and the unit stays `enabled` and starts anyway. That produced a session with
+# waybar drawn on top of the DMS bar, two notification daemons, and both hypridle
+# and DMS's IdleService armed.
 #
-# ⚠️ THE ONE THING THAT WOULD BREAK THAT: enabling lingering (`loginctl
-# enable-linger`), which rootless k3s is a plausible future reason to do. A user
-# manager that outlives logout would keep `waybar.service` masked, and the
-# DEFAULT Hyprland session would then start with no bar and no notifications.
-# If lingering is ever turned on, this script must switch to explicit cleanup
-# (or the units must be gated some other way).
+# The masks go into /run/user/$UID/systemd/user.control/ instead — rank 2, above
+# ~/.config/systemd/user/, and still under /run, so the die-with-the-session
+# guarantee above is unchanged. systemd honours a /dev/null symlink as a mask in
+# any search-path directory, so this needs no systemctl flag, just the symlink
+# plus a `daemon-reload`. (`--runtime enable` for ENABLE_UNITS is left alone: it
+# writes .wants/ symlinks, which AGGREGATE rather than override, so search-path
+# rank never applies to them — which is exactly why dms.service did start while
+# none of the maskings took, i.e. why the bug looked like "an extra bar" rather
+# than "the session is broken".)
+#
+# The isolation guarantee does NOT rest on the trap below firing. Cleanup has two
+# independent paths:
+#
+#   1. the EXIT trap here — the fast path, runs the moment uwsm returns;
+#   2. dms-session-cleanup.service — `PartOf=graphical-session.target`, so
+#      systemd runs its ExecStop= when the session target goes down.
+#
+# Path 2 is what makes this robust rather than merely tidy. A SIGKILL of THIS
+# script skips its trap entirely, and before that unit existed nothing else would
+# have unmasked anything.
+#
+# ⚠️ LINGERING USED TO BE A LANDMINE HERE, AND IS NO LONGER. `loginctl
+# enable-linger` — which a user-scoped rootless k3s (k3s-rootless.service) is a
+# real reason to want, so the cluster can outlive a logout — keeps
+# user@$UID.service alive with nobody logged in. That keeps /run/user/$UID alive,
+# which keeps these masks alive, which would have brought the DEFAULT Hyprland
+# session up with no bar, no notifications, no OSD, no tray, no launcher backend,
+# no polkit agent and no idle/lock. Silently: no unit fails, they simply never
+# start, and the last two are security-relevant rather than cosmetic.
+#
+# Because the masks are GLOBAL — systemd has no per-session masking, and these
+# seven units are shared with the default and niri sessions — the old design was
+# substituting *short lifetime* for scoping. Lingering removed the substitute.
+# Path 2 replaces it with an explicit teardown that does not care whether the
+# manager survives, so the desktop and the cluster no longer constrain each
+# other. The residual hole is a hard SIGKILL of the user manager itself, which
+# takes k3s down too and is therefore not a conflict between the two.
 #
 # LOCKING AND IDLE ARE DMS'S HERE TOO — deliberately not mixed. hypridle is
 # masked below, and nothing then starts hyprlock: hyprlock.service has no
@@ -89,21 +124,45 @@ MASK_UNITS=(
 # `bootstrap:dms-session` mise task does that), so it never starts in the
 # default session. dms-binds re-points the launcher keys at DMS inside the
 # running compositor — see ~/.local/bin/dms-binds.
+# dms-session-cleanup.service must be enabled so that it STARTS with
+# graphical-session.target — a oneshot that never started can never have its
+# ExecStop= run, so an unstarted unit is not a safety net.
 ENABLE_UNITS=(
   dms.service
   dms-binds.service
+  dms-session-cleanup.service
 )
+
+# Where the masks are written. See the ⚠️ block at the top for why this is
+# user.control and not what `systemctl --user --runtime mask` would use.
+CONTROL_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/systemd/user.control"
+
+mask_units() {
+  mkdir -p "$CONTROL_DIR" || return 0
+  local u
+  for u in "${MASK_UNITS[@]}"; do ln -sfn /dev/null "$CONTROL_DIR/$u" || true; done
+  systemctl --user daemon-reload || true
+}
+
+# Delegates to the same script dms-session-cleanup.service calls from ExecStop=,
+# so there is exactly one unmask implementation and MASK_UNITS stays the single
+# source of truth for the list (the script derives it from the symlinks present).
+unmask_units() {
+  "$HOME/.local/bin/hyprland-dms-unmask" || true
+}
 
 cleanup() {
   # Every call is `|| true`: a trap inherits the shell's options, so one failure
   # must not abort the trap and leave the remaining units masked.
   local u
-  for u in "${MASK_UNITS[@]}";   do systemctl --user --runtime unmask  "$u" || true; done
+  unmask_units
   for u in "${ENABLE_UNITS[@]}"; do systemctl --user --runtime disable "$u" || true; done
 }
 trap cleanup EXIT
 
-for u in "${MASK_UNITS[@]}";   do systemctl --user --runtime mask   "$u" || true; done
+# Masking happens BEFORE `uwsm start`, i.e. before graphical-session.target is
+# reached, so the units are never pulled in and never need stopping.
+mask_units
 for u in "${ENABLE_UNITS[@]}"; do systemctl --user --runtime enable "$u" || true; done
 
 # NB: no `exec`. This shell must stay alive as uwsm's parent so the EXIT trap

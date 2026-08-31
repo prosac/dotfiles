@@ -1,0 +1,45 @@
+# Clears the DMS session's runtime unit masks when the graphical session ends.
+#
+# This unit exists ONLY for its ExecStop=. ExecStart= does nothing but log what
+# is masked, so the journal records whether the safety net was armed.
+#
+# WHY IT IS NEEDED
+#
+# ~/.local/bin/hyprland-dms masks seven units the DMS session supersedes. Those
+# masks are global -- systemd has no per-session masking, and the units are
+# shared with the default Hyprland session and the niri session. The original
+# design relied on the masks living under /run and dying with the user manager.
+#
+# ⚠️ `loginctl enable-linger` breaks that, and a user-scoped rootless k3s
+# (k3s-rootless.service) is a real reason to enable it. A manager that outlives
+# logout keeps the seven symlinks alive, and the next login to the DEFAULT
+# session comes up with no bar, no notifications, no OSD, no tray, no polkit
+# agent and no idle/lock -- silently, with no failed unit to point at.
+#
+# PartOf=graphical-session.target makes systemd stop this unit when the session
+# ends, so ExecStop= runs the cleanup at every logout regardless of lingering,
+# and regardless of whether hyprland-dms's own bash EXIT trap fired. That last
+# part matters even with lingering off: a SIGKILL of the wrapper skips its trap.
+#
+# Runtime-enabled by hyprland-dms, never persistently enabled -- it ships as a
+# plain chezmoi file, so it is present in all three sessions. Starting it
+# somewhere else is inert: there are no masks to clear, and the script says so.
+
+[Unit]
+Description=Clear DMS session unit masks at session end
+Documentation=man:systemd.unit(5)
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+
+[Service]
+Type=oneshot
+# Required: without it the unit would finish "inactive" and stopping it later
+# would never trigger ExecStop=.
+RemainAfterExit=yes
+ExecStart=%h/.local/bin/hyprland-dms-unmask --report
+ExecStop=%h/.local/bin/hyprland-dms-unmask
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target
