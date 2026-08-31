@@ -33,6 +33,8 @@ MASKED_UNITS = [
     "nm-applet.service",
     "elephant.service",
     "hypridle.service",
+    "awww.service",
+    "waypaper.service",
 ]
 ACTIVE_UNITS = ["dms.service", "dms-binds.service", "dms-session-cleanup.service"]
 

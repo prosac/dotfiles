@@ -106,10 +106,31 @@ set -uo pipefail
 #                                          what stops hyprlock being launched,
 #                                          since hypridle's `lock_cmd` was its
 #                                          only trigger.
+#   awww + waypaper                    -> DMS draws its own wallpaper layer, and
+#                                          owns the image (`dms ipc call wallpaper
+#                                          get`). Leaving these unmasked put TWO
+#                                          wallpaper layers on the same output:
+#                                          quickshell's and awww's. See the note
+#                                          below on why the mask needs the
+#                                          Super+W rebind to actually hold.
+#
+# ⚠️ MASKING awww.service IS NOT ENOUGH ON ITS OWN. waypaper starts a daemon
+# ITSELF when `pgrep awww-daemon` comes back empty (changer.py:change_with_awww),
+# so a single press of Super+W would put an unmanaged awww-daemon on the DMS
+# session's output no matter what systemd thinks. That is exactly how this
+# machine ended up with an orphan daemon outside every unit. The mask therefore
+# only holds because ~/.local/bin/dms-binds re-points Super+W at DMS's own
+# wallpaper browser; the two changes are one change and must not be split.
+#
+# The previous version of this comment said wallpaper was left unmasked because
+# it is "entangled with toggle-color-scheme". That is not true of this config:
+# toggle-color-scheme contains no reference to awww, swww or waypaper, and
+# waypaper's `post_command` is empty, so neither drives the other. The real
+# entanglement it was guarding against is matugen, and that is already handled
+# by excluding matugen at the dnf level and switching off the DMS template flags.
+#
 # Deliberately NOT masked: hyprlock.service (never enabled — on-demand only, and
-# nothing demands it now), swww + waypaper (wallpaper is entangled with
-# toggle-color-scheme; moving it to `dms ipc call wallpaper` is a separate,
-# optional step), kando, opentabletdriver.
+# nothing demands it now), kando, opentabletdriver.
 MASK_UNITS=(
   waybar.service
   wayland-noti.service
@@ -118,6 +139,8 @@ MASK_UNITS=(
   nm-applet.service
   elephant.service
   hypridle.service
+  awww.service
+  waypaper.service
 )
 
 # dms.service is packaged by the `dms` RPM and is persistently DISABLED (the
