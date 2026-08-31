@@ -234,7 +234,9 @@ Everything above is seeded once into `~/.config/DankMaterialShell/settings.json`
 
 `hypridle.conf` itself is never edited — it is shared with the default and niri sessions, which keep their 5-minute dim, 10-minute hyprlock and resume handling exactly as before. Masking the unit is what takes it out of this session.
 
-Wallpaper is still `swww` + `waypaper` here, because it is entangled with `toggle-color-scheme`; moving it to `dms ipc call wallpaper` is a separate, optional step.
+**Wallpaper is DMS's in this session.** `awww.service` and `waypaper.service` are masked like the other superseded units, and Super+W is re-pointed at `dms ipc call dash toggle wallpaper` by `dms-binds`. Both halves are required: a mask alone cannot stop waypaper, which starts a daemon itself whenever `pgrep awww-daemon` comes back empty, so one keypress would put an unmanaged daemon on top of DMS's layer.
+
+This used to say wallpaper was left alone because it is "entangled with `toggle-color-scheme`". It is not — `toggle-color-scheme` never references awww/swww/waypaper, and waypaper's `post_command` is empty. The entanglement that mattered was matugen's, and that is already handled by the dnf exclude plus the DMS template flags.
 
 ## Stages
 

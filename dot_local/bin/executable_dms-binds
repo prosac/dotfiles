@@ -39,9 +39,17 @@ READY_POLL_S = 0.1
 
 # mods, key, dispatcher, argument.
 #
-# Super+W (waypaper) is deliberately NOT here: wallpaper is still swww +
-# waypaper in this session because it is entangled with toggle-color-scheme.
-# Moving it to `dms ipc call wallpaper` is a separate, optional step.
+# Super+W MUST be here. hyprland-dms masks awww.service in this session, but a
+# mask cannot stop waypaper: its awww backend runs `pgrep awww-daemon` and, on
+# an empty result, starts a daemon of its own (changer.py:change_with_awww). So
+# leaving Super+W pointed at waypaper would let one keypress put an unmanaged
+# wallpaper daemon on top of DMS's own layer -- which is how this machine
+# acquired an orphan awww-daemon running outside every unit. Re-pointing the key
+# is what makes the mask hold; the two changes belong together.
+#
+# `dash toggle wallpaper`, NOT `dankdash wallpaper`: DMS's own IPC source marks
+# the latter deprecated ("TODO - remove for v1.6") and returns a WARN telling you
+# to use this instead. dash's _resolveTabId maps "wallpaper" to the wallpaper tab.
 #
 # Every function below was checked against DMS v1.5.3's IpcHandler targets.
 # NB the docs site lists only `notifications open`, but `toggle` does exist.
@@ -55,6 +63,8 @@ BINDS: list[tuple[str, str, str, str]] = [
     ("SUPER", "X", "exec", "dms ipc call powermenu toggle"),
     ("SUPER SHIFT", "V", "exec", "dms ipc call clipboard toggle"),
     ("SUPER", "slash", "exec", "dms ipc call keybinds toggle hyprland"),
+    # replaces the default session's `exec, waypaper` -- see the note above.
+    ("SUPER", "W", "exec", "dms ipc call dash toggle wallpaper"),
 ]
 
 
