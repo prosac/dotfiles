@@ -11,14 +11,30 @@
 #                    daemon on top of the systemd-managed one. See awww.service.
 #                    The swww_transition_* keys below are shared by both backends.
 #
-# ⚠️ use_xdg_state makes ~/.local/state/waypaper/ the WINNER for `backend` and
-#    `folder`: config.py reads this file first (line ~105) and the state file
-#    second (line ~157), overwriting. A backend set here alone does not stick.
+# ⚠️ use_xdg_state makes ~/.local/state/waypaper/state.ini the WINNER for BOTH
+#    `backend` (config.py ~105 then ~157) and `folder` (~142 then ~162): this file
+#    is read first and the state file overwrites it. Neither setting here sticks on
+#    a machine that already has a state.ini -- edit both, or delete state.ini.
 # use_xdg_state   -> keeps the per-monitor wallpaper selection in
 #                    ~/.local/state/waypaper/ instead of rewriting this file,
 #                    so the config stays stable and chezmoi-friendly.
 [Settings]
+# TWO galleries, and the split is deliberate:
+#   Pictures/wallpapers -- the Fedora stock set, REPRODUCIBLE on any machine by
+#                          re-running the /usr/share/backgrounds import (step 6 of
+#                          the doc). Machine-local derived content.
+#   Pictures/WSelector  -- hand-picked downloads. Personal content that exists
+#                          only where it has been synced.
+# Listing both is what keeps a FRESH machine's picker non-empty: the stock set
+# regenerates itself, so the gallery works before WSelector has been copied over,
+# and a folder that does not exist yet is simply skipped rather than fatal.
+#
+# Multi-folder syntax is one path per line with indented continuations --
+# config.py:92 does `config.get(...).split("\n")`. The five-space indent matches
+# what waypaper's own write_folder_list_to_config emits, so its next save produces
+# no spurious diff against this seed.
 folder = {{ .chezmoi.homeDir }}/Pictures/wallpapers
+     {{ .chezmoi.homeDir }}/Pictures/WSelector
 backend = awww
 fill = fill
 sort = name
