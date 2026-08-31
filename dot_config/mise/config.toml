@@ -247,6 +247,13 @@ echo "dms.service is now disabled in the default Hyprland session."
 echo "Log out and pick 'Hyprland (DMS)' at GDM to try it."
 '''
 
+# Verification for the task above. Deliberately a separate task rather than a
+# tail on bootstrap:dms-session: everything it checks can only be observed from
+# INSIDE a running DMS session, which is one logout away from the install.
+[tasks."check:dms-session"]
+description = "Verify a 'Hyprland (DMS)' session came up right (masks took, DMS owns notifications, cleanup unit armed) -- run from inside that session"
+run = '~/.local/bin/dms-session-check'
+
 [tasks."bootstrap:sleep"]
 description = "Lid close -> plain suspend: logind/sleep drop-ins, zram off, SELinux labels on the swap subvolume, UPower critical action (asks for sudo)"
 run = '''
