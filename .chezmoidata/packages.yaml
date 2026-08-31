@@ -27,11 +27,25 @@ elephantProviders:
 packages:
   # COPRs enabled on every Fedora.
   copr:
-    - solopasha/hyprland
     - tofik/nwg-shell
 
   # COPRs enabled only on Fedora 43+ (no F42 chroot).
   coprF43Plus:
+    # Hyprland itself, plus aquamarine and waypaper. This REPLACED
+    # solopasha/hyprland in 2026-08; solopasha is explicitly disabled on this
+    # host, and re-enabling it would put a second, unpinned Hyprland channel
+    # ahead of this one. It moved out of the every-Fedora list above because
+    # lionheartp has no F42 chroot -- fedora-42-x86_64 404s, 43 and 44 are live
+    # -- and `enabled=1` on a COPR with no chroot for your release is a repo
+    # that silently resolves nothing (skip_if_unavailable=True). On F42 there is
+    # therefore no Hyprland COPR at all and Fedora's own package is what you get.
+    #
+    # ⚠️ This COPR runs AHEAD of upstream and garbage-collects old builds, so an
+    # upgrade can move Hyprland out from under the plugins -- which are ABI-pinned
+    # per build and fail to load SILENTLY, with no failed unit and no error. The
+    # includepkgs pin below bounds WHICH packages come from here; it does nothing
+    # about WHICH VERSION. Check hyprland-devel before a compositor upgrade.
+    - lionheartp/Hyprland
     - errornointernet/walker
     # DankMaterialShell (the "Hyprland (DMS)" session — see PLAYBOOK.md).
     # danklinux ships quickshell 0.3.x (Terra only has 0.2.1, too old for
@@ -67,8 +81,25 @@ packages:
   # today by luck; if Terra ever ships a newer quickshell than the COPR, DMS
   # would silently get an untested toolkit. Pinning the source makes a bad
   # upgrade a loud install failure instead of a silent breakage.
+  #
+  # copr:...:lionheartp:Hyprland.includepkgs=...: that COPR builds a great deal
+  # more than Hyprland, and without a pin a weak dependency can pull an
+  # arbitrary package out of it in preference to Fedora's or Terra's build. The
+  # allowlist is exactly what this host takes from it, verified against the
+  # installed set: hyprland, hyprland-uwsm, hypr{cursor,graphics,lang,utils,
+  # wayland-scanner,wire}*, aquamarine(-devel), glaze-devel, waypaper.
+  #
+  # Dropping solopasha strands nothing: the only two packages still attributed
+  # to it here, python3-imageio-ffmpeg and python3-screeninfo, are both in
+  # Terra 43.
+  #
+  # NB the repoid contains dots and colons and is still parsed correctly --
+  # `dnf config-manager setopt` splits on the LAST dot before `=`. It also
+  # resolves the repoid to concrete repos at write time, so it must run AFTER
+  # the COPRs are enabled (the template already orders it that way).
   repoOverridesF43Plus:
     - terra.excludepkgs=quickshell*
+    - "copr:copr.fedorainfracloud.org:lionheartp:Hyprland.includepkgs=hypr*,aquamarine,aquamarine-devel,xdg-desktop-portal-hyprland,waypaper,glaze-devel"
 
   # dnf packages installed on every Fedora.
   dnf:
@@ -85,12 +116,23 @@ packages:
     - gitleaks
     - pre-commit
 
-    # Hyprland WM (solopasha/hyprland)
+    # Hyprland WM (lionheartp/Hyprland on F43+; Fedora's own build on F42)
+    #
+    # hyprpaper is deliberately ABSENT. The wallpaper stack is awww (a swww
+    # drop-in, via /usr/local/bin shims) driven by waypaper -- see swww.service
+    # + waypaper.service and hyprland.conf.tmpl. Installing hyprpaper as well
+    # would put a second wallpaper daemon on the machine with nothing enabling
+    # it. It stays installed on hosts that already have it; dnf only adds.
     - hyprland
-    - hyprpaper
     - hypridle
     - hyprlock
     - waybar
+
+    # Wallpaper daemon. Terra's awww OBSOLETES swww, so `swww`/`swww-daemon`
+    # on this host are /usr/local/bin shims pointing at the awww binaries --
+    # which is what swww.service execs and what waypaper's `backend = swww`
+    # drives. The picker itself (waypaper) is F43+ only, below.
+    - awww
 
     # niri WM — scrollable-tiling alternative session (Fedora repo, no COPR).
     # Ships niri-session + /usr/share/wayland-sessions/niri.desktop, so "Niri"
@@ -144,6 +186,12 @@ packages:
   dnfF43Plus:
     - walker
     - elephant
+
+    # Wallpaper picker (Super+W), and the other half of the awww pairing above.
+    # F43+ because lionheartp/Hyprland is the ONLY repo that carries it -- it is
+    # in no Fedora or Terra channel -- and that COPR has no F42 chroot. It is
+    # named explicitly in that COPR's includepkgs pin for the same reason.
+    - waypaper
 
     # DankMaterialShell — the Quickshell desktop used by the "Hyprland (DMS)"
     # session only. Installing these changes nothing for the default Hyprland

@@ -103,7 +103,9 @@ exec-once = ~/.local/bin/toggle-color-scheme --apply
 # and swww.service only reports active once its socket answers, so the daemon is
 # guaranteed ready before `waypaper --restore` issues `swww img` (no sleep race).
 # Super+W still opens the waypaper GUI. `swww`/`swww-daemon` are /usr/local/bin
-# shims for the awww binaries (awww obsoletes swww on Fedora's solopasha COPR).
+# shims for the awww binaries. Terra's awww carries `Obsoletes: swww < 0.11.2-2`
+# but NOT `Provides: swww`, so installing it takes the swww/swww-daemon binaries
+# away without putting anything back under those names -- hence the shims.
 # See ~/Documents/docs/hyprland-wallpaper-waypaper-setup.md
 
 

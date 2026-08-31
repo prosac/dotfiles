@@ -3,8 +3,9 @@
 # ~/.config/waypaper/config.ini; delete the target first if you want to re-seed.
 #
 # backend = swww  -> drives `swww`/`swww-daemon`, which are /usr/local/bin shims
-#                    pointing at the awww binaries (awww obsoletes swww on the
-#                    solopasha:hyprland COPR). awww's CLI is swww-compatible.
+#                    pointing at the awww binaries. Terra's awww has
+#                    `Obsoletes: swww` but no `Provides: swww`, so the binaries
+#                    vanish under that name; awww's CLI is swww-compatible.
 # use_xdg_state   -> keeps the per-monitor wallpaper selection in
 #                    ~/.local/state/waypaper/ instead of rewriting this file,
 #                    so the config stays stable and chezmoi-friendly.
