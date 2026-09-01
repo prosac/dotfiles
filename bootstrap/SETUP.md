@@ -28,7 +28,21 @@ mise run ch:hooks
 
 ## 2. Btrfs dotfile snapshots (optional but recommended)
 
-Requires `/home` on btrfs (Fedora default).
+**Requires `/home` on btrfs.** That is the Fedora default for a fresh install, but a
+machine upgraded across many releases may well still be on ext4 — check first:
+
+```sh
+findmnt -no FSTYPE --target /home     # btrfs -> do this section; anything else -> skip it
+```
+
+**On a non-btrfs `/home`, skip this whole section.** Nothing else depends on it, and
+you do not need to disable anything: `dotsnap` checks the filesystem itself and exits
+0 with a message, so `dotsnap.timer` (which `enable-session-services.sh` enables
+unconditionally) is a harmless no-op. That check exists precisely because the failure
+mode was bad — `dotsnap.service` carries `OnFailure=notify-failure@%n.service` and the
+timer is hourly, so a snapshot that merely *failed* on ext4 would put a desktop
+notification on screen every hour, forever. Note `ConditionPathIsMountPoint=/home` in
+the unit does **not** protect you here: `/home` is very often its own mount on ext4 too.
 
 ```sh
 # Create the snapshot tree via a tmpfiles.d drop-in: /home/.snapshots as a btrfs
