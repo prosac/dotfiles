@@ -364,9 +364,17 @@ ls -Zd /swap | sed 's/^/  /'
 sudo ls -Zd /swap/swapfile | sed 's/^/  /'
 '''
 
+# starship is here rather than installed by its own upstream script: the
+# install-packages script used to pipe https://starship.rs/install.sh into a
+# ROOT shell, unattended, on every fresh bootstrap. mise resolves starship
+# through aqua (`aqua:starship/starship`), which verifies upstream checksums,
+# and installs it under ~/.local/share/mise as this user -- no root in the path.
+# .zshrc runs `starship init zsh` unconditionally, so the shim dir being first
+# on PATH is what makes this work on first login.
 [tools]
 argocd = "3.1"
 go = "1.26.0"
 node = "24.14.0"
 nsc = "2.12.0"
+starship = "1.26.0"
 usage = "2.13.1"

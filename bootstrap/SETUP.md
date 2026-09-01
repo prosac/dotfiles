@@ -252,7 +252,13 @@ Already handled automatically by `run_onchange_after_install-packages.sh.tmpl` d
 mise run ch:apply
 ```
 
-The script enables COPRs, runs `dnf install`, and curl-installs `mise` and `starship` if absent. All steps idempotent.
+The script enables COPRs, runs `dnf install`, and curl-installs `mise` if absent. All steps idempotent.
+
+`starship` is **not** curl-installed any more (it used to be piped from
+`starship.rs/install.sh` into a **root** shell, unattended). It is declared in the
+`[tools]` block of `~/.config/mise/config.toml` and installed by the script via
+`mise install starship`, which resolves it through aqua — checksum-verified, into
+`~/.local/share/mise`, with no root anywhere in the path.
 
 ## 4. User services — mostly automatic
 
