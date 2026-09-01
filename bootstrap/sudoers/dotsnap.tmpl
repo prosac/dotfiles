@@ -5,8 +5,33 @@
 #
 # Install via:  mise run bootstrap:sudoers
 # Or manually: sudo install -m 440 -o root -g root <(chezmoi execute-template < .../dotsnap.tmpl) /etc/sudoers.d/dotsnap
+#
+# ⚠️ WHY REGEXES AND NOT `/home/.snapshots/hourly/*` (the form used until
+# 2026-09-01): sudoers matches command line arguments as a SINGLE CONCATENATED
+# STRING, and in that string a wildcard matches whitespace and `/` alike
+# (sudoers(5), "Wildcards in command arguments"). So the old trailing `*` did not
+# mean "one snapshot under hourly/" -- it meant "hourly/ followed by anything at
+# all, including more arguments". Since `btrfs subvolume delete` accepts a list
+# of subvolumes, this was enough to delete ANY subvolume as root with no
+# password, from any code already running as this user:
+#
+#     sudo -n /usr/sbin/btrfs subvolume delete /home/.snapshots/hourly/<real> /swap
+#
+# -- which matched the rule and would have taken out the swap subvolume that
+# hibernation depends on. Path traversal (`hourly/../../..`) worked for the same
+# reason. A NOPASSWD rule is the last place to leave that open.
+#
+# The regexes below pin BOTH arguments end to end, so the only thing that can
+# vary is the snapshot's own timestamp name -- exactly `YYYY-MM-DD-HHMM`, the
+# format ~/.local/bin/dotsnap generates (`date +%Y-%m-%d-%H%M`). Nothing can be
+# appended: the `$` anchors the whole concatenated argument string. Keep this in
+# sync if dotsnap's `stamp=` format ever changes, or snapshots stop working.
+#
+# ⚠️ REQUIRES sudo >= 1.9.10 (regex support in sudoers). Fedora 42/43 ship
+# 1.9.16+, so this is fine here; on anything older `visudo -c` will reject the
+# file rather than fail open. `mise run bootstrap:sudoers` checks the version.
 
-Cmnd_Alias DOTSNAP = /usr/sbin/btrfs subvolume snapshot -r /home /home/.snapshots/hourly/*, \
-                     /usr/sbin/btrfs subvolume delete /home/.snapshots/hourly/*
+Cmnd_Alias DOTSNAP = /usr/sbin/btrfs ^subvolume snapshot -r /home /home/\.snapshots/hourly/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$, \
+                     /usr/sbin/btrfs ^subvolume delete /home/\.snapshots/hourly/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$
 
 {{ .chezmoi.username }} ALL=(root) NOPASSWD: DOTSNAP
