@@ -62,11 +62,14 @@ Snapshots run hourly via `dotsnap.timer` (systemd user unit). One week of hourly
 ### New machine
 
 ```sh
-chezmoi init --apply git@github.com:prosac/dotfiles.git
+# HTTPS, not SSH: a fresh machine has no key registered with GitHub yet, and
+# 1Password is not set up at this point either. Switch the remote afterwards.
+chezmoi init --apply https://github.com/prosac/dotfiles.git
+chezmoi git -- remote set-url origin git@github.com:prosac/dotfiles.git   # once a key exists
 mise run ch:hooks                 # install pre-commit hook in the cloned source
 ```
 
-Then follow `bootstrap/SETUP.md` for the per-machine privileged setup (sudoers + snapshot timer + enabling user services).
+Then follow `bootstrap/SETUP.md` for the per-machine privileged setup (sudoers + snapshot timer + FIDO2 + sleep hooks). `README.md` carries the same sequence as a front-door quick start.
 
 `chezmoi init` prompts for any personal values (name, email, machine-class, password-manager, mail-setup).
 
@@ -212,7 +215,13 @@ mise run bootstrap:dms-session        # one-time: installs /usr/share/wayland-se
 
 Then log out and pick "Hyprland (DMS)" at GDM. To remove: `sudo rm /usr/share/wayland-sessions/hyprland-dms.desktop`.
 
-**How it stays isolated.** A second *Hyprland* session cannot announce a distinct `XDG_CURRENT_DESKTOP` (it must stay `Hyprland` or xdg-desktop-portal-hyprland stops matching), so it cannot use the `ConditionEnvironment=` lever the niri session uses. Instead `~/.local/bin/hyprland-dms` does `systemctl --user --runtime mask/enable`, which writes into `/run/user/$UID/systemd/user/` and is destroyed when the user's systemd manager exits. `Linger=no`, so that really happens at logout — the guarantee does not depend on the wrapper's EXIT trap firing, and a hard crash still leaves the default session clean.
+**How it stays isolated.** A second *Hyprland* session cannot announce a distinct `XDG_CURRENT_DESKTOP` (it must stay `Hyprland` or xdg-desktop-portal-hyprland stops matching), so it cannot use the `ConditionEnvironment=` lever the niri session uses. Instead `~/.local/bin/hyprland-dms` masks the units DMS supersedes for the lifetime of the session.
+
+⚠️ **Not with `systemctl --user --runtime mask`.** That writes into `/run/user/$UID/systemd/user/`, which is rank 8 in the user unit search path — *below* `~/.config/systemd/user/` at rank 5, where every one of these units actually lives. The real unit file shadows the symlink, so the mask is a **silent no-op**: nothing errors, the unit stays `enabled`, and it starts anyway. That produced a session with waybar on top of the DMS bar and two notification daemons. The masks go into `/run/user/$UID/systemd/user.control/` (rank 2) instead.
+
+**Teardown does not rely on the manager dying.** The masks are global — systemd has no per-session masking — so the old design substituted *short lifetime* for scoping, and `loginctl enable-linger` (which a user-scoped rootless k3s is a real reason to want) would have removed that substitute and left the *default* session with no bar, no notifications, no polkit agent and no lock. `dms-session-cleanup.service` is `PartOf=graphical-session.target` and unmasks from its `ExecStop=`, so cleanup runs at every logout regardless of lingering, and regardless of whether the wrapper's EXIT trap fired (a SIGKILL skips it).
+
+Verify a running session with `mise run check:dms-session`.
 
 ⚠️ **This breaks if lingering is ever enabled** (`loginctl enable-linger`, e.g. for rootless k3s): a user manager that outlives logout keeps `waybar.service` masked, and the *default* session then starts with no bar.
 

@@ -11,8 +11,12 @@ sh -c "$(curl -fsLS get.chezmoi.io)" -- -b ~/bin
 Then add `~/bin` to `$PATH` if it isn't already (it is, after Step 1 deploys `.zshrc`).
 
 ```sh
-chezmoi init --apply git@github.com:prosac/dotfiles.git
+# HTTPS, not SSH: this machine has no key registered with GitHub yet.
+chezmoi init --apply https://github.com/prosac/dotfiles.git
 ```
+
+Once 1Password / your SSH key is working (Step 2a), point the remote at SSH so you
+can push: `chezmoi git -- remote set-url origin git@github.com:prosac/dotfiles.git`
 
 `init` prompts for `name`, `email`, `machineClass` (laptop/desktop), `passwordManager` (`1password`/`bitwarden`/`none` — only `1password` enables SSH-signed commits in `.gitconfig`), and `mailSetup` (bool, default `false` — set `true` to deploy the notmuch + lieer Gmail stack: scripts, systemd timer, Doom `:email notmuch`, lieer venv, mail dnf packages). On `apply`, the `run_onchange_after_install-packages.sh.tmpl` script runs (see Step 4 below) — interactive `sudo` will be required.
 
@@ -236,17 +240,24 @@ mise run ch:apply
 
 The script enables COPRs, runs `dnf install`, and curl-installs `mise` and `starship` if absent. All steps idempotent.
 
-## 4. Enable other user services as needed
+## 4. User services — mostly automatic
 
-These ship as units but aren't auto-enabled (your call per machine):
+⚠️ **Do not hand-enable the session units.** `run_onchange_after_enable-session-services.sh`
+runs as part of `chezmoi apply` and already enables waybar, awww + waypaper (wallpaper),
+hypridle + hypridle-niri, nm-applet, mate-polkit, elephant, swayosd, wayland-noti,
+opentabletdriver, kando and `dotsnap.timer` — each guarded so a missing binary is
+skipped rather than fatal. Enabling them by hand is at best redundant.
+
+`hyprpaper` is **not** part of this setup. The wallpaper stack is `awww.service`
+(daemon) + `waypaper.service` (restore-on-login), driven by waypaper's native `awww`
+backend. Enabling hyprpaper alongside it puts two wallpaper daemons on one output.
+
+Left for you, because they are genuinely per-machine:
 
 ```sh
-systemctl --user enable --now waybar.service
-systemctl --user enable --now hyprpaper.service
-systemctl --user enable --now hypridle.service
-systemctl --user enable --now wired.service
-systemctl --user enable --now nm-applet.service
-systemctl --user enable --now polkit-mate-authentication-agent-1.service
-systemctl --user enable --now kando.service
+systemctl --user enable --now wired.service   # notification daemon, default session only
 # hyprlock.service — invoked on demand by hypridle, no enable needed
 ```
+
+To check what actually came up in a session: `mise run check:dms-session` (DMS), or
+`systemctl --user list-units --state=failed` (any session).
