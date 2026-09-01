@@ -14,12 +14,29 @@ Requisite=graphical-session.target
 ConditionEnvironment=XDG_CURRENT_DESKTOP=Hyprland
 
 [Service]
-Type=oneshot
-# So `systemctl --user is-active dms-binds` reports whether the rebind actually
-# succeeded — the script verifies its own binds and exits non-zero if any of
-# them did not land.
-RemainAfterExit=yes
+# Type=simple, NOT oneshot: after the initial apply the script stays alive on
+# Hyprland's event socket and re-applies the binds on every `configreloaded`.
+# A reload rebuilds the keybind table from hyprland.conf and silently discards
+# every runtime rebind -- Super+D back to walker, Super+W back to waypaper --
+# while DMS is still the running shell and nothing reports it. Hyprland also
+# auto-reloads whenever hyprland.conf changes on disk, so a `chezmoi apply`
+# touching that file is enough to trigger it.
+#
+# `systemctl --user is-active dms-binds` still means "the binds are in place":
+# the script only reaches its watch loop after verifying every bind landed, and
+# exits non-zero if any did not.
+Type=simple
+# Python block-buffers stdout when it is not a TTY. As a oneshot that did not
+# matter -- the buffer flushed at exit. Now the process stays alive for the whole
+# session, so without this every log line (including "re-applied N binds after
+# config reload") would sit in the buffer until logout and the unit would look
+# silent exactly when you are trying to see what it did.
+Environment=PYTHONUNBUFFERED=1
 ExecStart=%h/.local/bin/dms-binds
+# The script returns 0 on event-socket EOF (a normal logout), so a restart here
+# only ever follows a real failure -- never a session ending.
+Restart=on-failure
+RestartSec=2
 Slice=session.slice
 
 [Install]

@@ -21,6 +21,19 @@ byte-identical.
 Started as dms-binds.service, which ~/.local/bin/hyprland-dms runtime-enables
 alongside dms.service.
 
+⚠️ RUNTIME BINDS DO NOT SURVIVE `hyprctl reload`. A reload re-reads hyprland.conf
+and rebuilds the keybind table from the FILE, so every rebind here is silently
+reverted -- Super+D goes back to walker, Super+W back to waypaper -- while
+dms.service is still running and DMS is still the shell. Nothing reports it; the
+keys simply do the default session's thing. Hyprland also auto-reloads whenever
+hyprland.conf changes on disk, so a `chezmoi apply` touching that file is enough.
+
+So after the initial apply this stays alive and subscribes to Hyprland's event
+socket (.socket2.sock), re-applying on every `configreloaded` event. That is why
+the unit is Type=simple rather than the oneshot it used to be. Re-applying is
+idempotent -- apply_binds() unbinds first, and hyprctl answers `ok` for a key
+that was never bound.
+
 SAFETY: this refuses to run unless dms.service is active. Without that check a
 stray invocation in the default session would unbind Super+D and point it at a
 `dms` that is not running — i.e. no launcher at all.
@@ -30,6 +43,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -153,6 +167,65 @@ def verify() -> list[str]:
     return missing
 
 
+def event_socket_path() -> str | None:
+    """Hyprland's event stream. Separate from the request socket hyprctl uses."""
+    sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    if not sig:
+        return None
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return os.path.join(runtime, "hypr", sig, ".socket2.sock")
+
+
+def watch_config_reloads() -> int:
+    """Re-apply the binds every time Hyprland reloads its config.
+
+    Events arrive as newline-delimited `NAME>>DATA` lines; the one that matters
+    is `configreloaded>>` (verified against the live socket, not the docs).
+
+    EOF means the compositor is gone, i.e. the session is ending -- return 0 so
+    systemd does not treat a normal logout as a failure and restart us into a
+    compositor that is no longer there.
+    """
+    path = event_socket_path()
+    if path is None:
+        print("HYPRLAND_INSTANCE_SIGNATURE unset — cannot watch for reloads.",
+              file=sys.stderr)
+        return 1
+
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.connect(path)
+    except OSError as exc:
+        print(f"could not connect to {path}: {exc}", file=sys.stderr)
+        return 1
+
+    print("dms-binds: watching for config reloads")
+    buf = b""
+    with sock:
+        while True:
+            try:
+                chunk = sock.recv(4096)
+            except OSError as exc:
+                print(f"event socket read failed: {exc}", file=sys.stderr)
+                return 1
+            if not chunk:
+                print("dms-binds: event socket closed — session ending")
+                return 0
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                if not line.startswith(b"configreloaded>>"):
+                    continue
+                # The reload has already rebuilt the bind table from the file by
+                # the time this event lands, so re-applying now cannot race it.
+                failures = apply_binds()
+                missing = verify()
+                for detail in failures + missing:
+                    print(f"re-apply after reload: {detail}", file=sys.stderr)
+                if not failures and not missing:
+                    print(f"dms-binds: re-applied {len(BINDS)} binds after config reload")
+
+
 def main() -> int:
     if not dms_is_active():
         print(
@@ -183,7 +256,7 @@ def main() -> int:
         return 1
 
     print(f"dms-binds: applied {len(BINDS)} binds")
-    return 0
+    return watch_config_reloads()
 
 
 if __name__ == "__main__":
