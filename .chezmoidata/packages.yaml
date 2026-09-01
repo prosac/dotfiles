@@ -106,7 +106,7 @@ packages:
     # Core
     - git
     - zsh
-    - vim
+    - vim-enhanced
     - fzf
     - ripgrep
     - btrfs-progs
@@ -148,9 +148,15 @@ packages:
     # GTK theme build deps — the Graphite-teal-nord theme that
     # toggle-color-scheme selects is not packaged for Fedora; it is built from
     # source by run_onchange_after_zz-install-gtk-theme.sh, which needs these.
+    #
+    # `gnome-themes-extra` was dropped from this list on 2026-09-01: Fedora 44
+    # no longer ships it (it went with the GTK2 stack, and nothing Provides it),
+    # so `dnf install` could not resolve the transaction at all on F44. It was
+    # never needed regardless — upstream's install.sh requires only sassc, and
+    # it drives sassc over gnome-shell/gtk-3.0/gtk-4.0 sources; there is no GTK2
+    # leg in the build for a gtk2 engine to serve.
     - sassc
     - gtk-murrine-engine
-    - gnome-themes-extra
 
     # System integration / tray / auth
     - blueman
