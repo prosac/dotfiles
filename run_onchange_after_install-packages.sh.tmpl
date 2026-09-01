@@ -66,9 +66,35 @@ if ! command -v mise >/dev/null; then
   echo "  installing mise..."
   curl -fsSL https://mise.run | sh
 fi
-if ! command -v starship >/dev/null; then
-  echo "  installing starship..."
-  curl -fsSL https://starship.rs/install.sh | sudo sh -s -- --yes
+# starship is declared in the [tools] block of ~/.config/mise/config.toml, which
+# chezmoi has already deployed by the time this `after` script runs. Install it
+# explicitly rather than leaving it to shim auto-install: .zshrc runs
+# `starship init zsh` unconditionally, so it has to be real by first login.
+#
+# WHY NOT `curl -fsSL https://starship.rs/install.sh | sudo sh -s -- --yes`,
+# which is what this was until 2026-09-01: that piped a third-party script into
+# a ROOT shell, unattended, out of `chezmoi apply`. mise fetches it via aqua
+# (checksum-verified) into ~/.local/share/mise as this user instead.
+#
+# Resolve mise by path rather than trusting PATH. mise.run has just installed it
+# seconds ago and this shell's PATH predates that, so `command -v mise` can miss
+# a mise that is definitely there. Skipping on a miss would be quietly wrong:
+# run_onchange_ reruns only when this script's own rendered content changes, so
+# a skip here does NOT get retried on the next `chezmoi apply` -- it would leave
+# every new shell running `starship init zsh` against a missing binary until
+# someone noticed.
+mise_bin="$(command -v mise || true)"
+if [ -z "$mise_bin" ]; then
+  for candidate in "$HOME/.local/bin/mise" "$HOME/.local/share/mise/bin/mise"; do
+    [ -x "$candidate" ] && { mise_bin="$candidate"; break; }
+  done
+fi
+if [ -n "$mise_bin" ]; then
+  echo "  installing starship via mise..."
+  "$mise_bin" install starship
+else
+  echo "  ERROR: mise not found after install — starship will be missing." >&2
+  exit 1
 fi
 
 {{ if not $f43plus -}}

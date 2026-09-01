@@ -20,6 +20,28 @@ can push: `chezmoi git -- remote set-url origin git@github.com:prosac/dotfiles.g
 
 `init` prompts for `name`, `email`, `machineClass` (laptop/desktop), `passwordManager` (`1password`/`bitwarden`/`none` — only `1password` enables SSH-signed commits in `.gitconfig`), and `mailSetup` (bool, default `false` — set `true` to deploy the notmuch + lieer Gmail stack: scripts, systemd timer, Doom `:email notmuch`, lieer venv, mail dnf packages). On `apply`, the `run_onchange_after_install-packages.sh.tmpl` script runs (see Step 4 below) — interactive `sudo` will be required.
 
+### 0a. Signing key (only on `passwordManager = 1password`)
+
+`.gitconfig` sets `commit.gpgsign = true` but deliberately does **not** carry
+`user.signingKey` — this repo is public, and a hardcoded key made every clone
+come preconfigured to sign as someone else. Put it in the untracked local file
+that `.gitconfig` already `[include]`s at the end (so it wins):
+
+```sh
+mkdir -p ~/.config/git
+cat > ~/.config/git/local.gitconfig <<'EOF'
+[user]
+	signingKey = ssh-ed25519 AAAA... you@example.com
+EOF
+
+# Same key again, for verifying signatures (gpg.ssh.allowedSignersFile):
+printf '%s %s\n' you@example.com 'ssh-ed25519 AAAA...' > ~/.config/git/allowed-signers
+```
+
+The public key is in 1Password next to the private one (`op read` the item, or
+copy it from `github.com/<you>.keys`). Skip this and the first commit on the
+machine fails with `user.signingkey needs to be set`.
+
 ## 1. Install pre-commit hook in the cloned source
 
 ```sh
@@ -252,7 +274,13 @@ Already handled automatically by `run_onchange_after_install-packages.sh.tmpl` d
 mise run ch:apply
 ```
 
-The script enables COPRs, runs `dnf install`, and curl-installs `mise` and `starship` if absent. All steps idempotent.
+The script enables COPRs, runs `dnf install`, and curl-installs `mise` if absent. All steps idempotent.
+
+`starship` is **not** curl-installed any more (it used to be piped from
+`starship.rs/install.sh` into a **root** shell, unattended). It is declared in the
+`[tools]` block of `~/.config/mise/config.toml` and installed by the script via
+`mise install starship`, which resolves it through aqua — checksum-verified, into
+`~/.local/share/mise`, with no root anywhere in the path.
 
 ## 4. User services — mostly automatic
 

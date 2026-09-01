@@ -113,7 +113,10 @@ def main() -> int:
     check(stray == "0", "waybar processes", stray)
 
     print("\nEnvironment")
-    linger = run("loginctl", "show-user", os.environ.get("USER", "jo"), "-p", "Linger", "--value")
+    # By UID, not $USER: loginctl takes either, and the UID is always right --
+    # $USER is unset under a systemd unit, and its fallback should never be a
+    # hardcoded name in a repo other machines clone.
+    linger = run("loginctl", "show-user", str(os.getuid()), "-p", "Linger", "--value")
     check(
         True,
         "Linger",
