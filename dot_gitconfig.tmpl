@@ -17,7 +17,17 @@
 	name = {{ .name }}
 	email = {{ .email }}
 {{- if eq .passwordManager "1password" }}
-	signingKey = ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMs6HiJPj7ByOObyp4an717pj59VjUZbCjdxO7LX/aa5 {{ .email }}
+# NB user.signingKey is deliberately NOT here. It is a per-machine identity, and
+# this repo is public -- a hardcoded key meant every clone came preconfigured to
+# sign as someone else, with gpgsign = true, i.e. a commit that always fails.
+# It lives in ~/.config/git/local.gitconfig instead, which is untracked and is
+# [include]d at the bottom of this file (so it is applied last and wins):
+#
+#     [user]
+#         signingKey = ssh-ed25519 AAAA... you@example.com
+#
+# A machine without that file gets "user.signingkey needs to be set" on its
+# first commit. See bootstrap/SETUP.md.
 [gpg]
 	format = ssh
 [gpg "ssh"]
