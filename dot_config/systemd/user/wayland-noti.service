@@ -8,7 +8,7 @@ ConditionEnvironment=|XDG_CURRENT_DESKTOP=niri
 
 [Service]
 Type=simple
-ExecStart=/home/jo/.cargo/bin/noti run
+ExecStart=%h/.cargo/bin/noti run
 Restart=on-failure
 RestartSec=2
 Slice=session.slice
