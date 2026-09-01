@@ -22,6 +22,38 @@ sudo dnf -y copr enable {{ . | quote }}
 {{- end }}
 {{- end }}
 
+# ---- Terra ------------------------------------------------------------------
+# Terra (repos.fyralabs.com) is a PREREQUISITE of this package set, not an
+# optional extra: waypaper requires python3dist(screeninfo), and screeninfo has
+# no provider anywhere in Fedora proper -- so `dnf install waypaper` cannot
+# resolve a transaction at all without Terra. It is not a COPR, so none of the
+# lines above bring it in.
+#
+# This went unseen for a long time because every machine that had ever run these
+# dotfiles already had Terra enabled by hand; the `terra.excludepkgs` pin below
+# has silently assumed it since the day it was written. The first bootstrap on a
+# machine that never had it (the desktop, 2026-09-01) is what surfaced it, as
+# `Problem: package waypaper-2.9-1.fc44.noarch ... requires
+# python3.14dist(screeninfo), but none of the providers can be installed`.
+#
+# ⚠️ Signature-checked, NOT --nogpgcheck. Terra's own documentation bootstraps
+# terra-release with --nogpgcheck, i.e. an unverified package from the network
+# with root. Its key IS published, and terra-release is signed with it --
+# fingerprint AE09 157A 4DE8 8B49 7EA1 D5D3 00CD AB43 DE22 6D6F, matching the
+# package's own `Key ID 00cdab43de226d6f` (verified 2026-09-01) -- so importing
+# the key first costs one line and keeps the trust chain intact. Everything
+# after this point is covered by the gpgcheck=1 that terra-release's own .repo
+# file sets up.
+if ! dnf repo list --all --quiet 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx terra; then
+  echo "==> Enabling Terra (provides python3-screeninfo, which waypaper needs)..."
+  relver=$(rpm -E %fedora)
+  sudo rpm --import "https://repos.fyralabs.com/terra${relver}/key.asc"
+  sudo dnf -y install \
+    --repofrompath "terra,https://repos.fyralabs.com/terra${relver}" \
+    --setopt=terra.gpgcheck=1 \
+    terra-release
+fi
+
 # Persistent dnf policy. `config-manager setopt` writes to
 # /etc/dnf/repos.override.d/ (per-repo) and /etc/dnf/dnf.conf's [main] (global),
 # so these outlive updates of the packages that own the .repo files. Runs after
