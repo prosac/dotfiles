@@ -31,8 +31,42 @@ echo "==> dnf policy (global excludes + repo pins)..."
 sudo dnf -y config-manager setopt {{ printf "excludepkgs=%s" (join "," .packages.dnfExclude) | quote }}
 {{- end }}
 {{- if $f43plus }}
+{{- if .packages.repoOverridesF43Plus }}
+
+# Per-repo pins, each `<repoid>.<option>=<value>`.
+#
+# ⚠️ Only applied to repos that actually EXIST. `config-manager setopt` fails
+# with "No matching repository to modify: <id>" against an unknown repo, and
+# under `set -e` that aborted the entire bootstrap before a single package was
+# installed. Not hypothetical: `terra.excludepkgs` assumes the third-party Terra
+# repo, which is NOT among the COPRs enabled above -- it is enabled by hand, so
+# it is simply absent on a machine that never had it. That is exactly how the
+# first apply on the desktop died (2026-09-01), with the COPRs already enabled
+# and nothing else done.
+#
+# Skipping is right rather than a workaround: a pin exists to stop one repo
+# outbidding another for a package, so a repo that is not installed has no bid
+# to lose. It is reported rather than silent, because a pin quietly not applying
+# on a machine that DOES have the repo would be a real problem.
+#
+# NB the repo id itself contains dots (COPR ids look like
+# copr:copr.fedorainfracloud.org:owner:Project), so split at the LAST dot before
+# the `=`, not the first. Option names never contain dots.
+repo_overrides=(
 {{- range .packages.repoOverridesF43Plus }}
-sudo dnf -y config-manager setopt {{ . | quote }}
+  {{ . | quote }}
+{{- end }}
+)
+existing_repos=$(dnf repo list --all --quiet 2>/dev/null | awk 'NR>1 {print $1}')
+for spec in "${repo_overrides[@]}"; do
+  key="${spec%%=*}"
+  repoid="${key%.*}"
+  if printf '%s\n' "$existing_repos" | grep -qxF "$repoid"; then
+    sudo dnf -y config-manager setopt "$spec"
+  else
+    echo "  skipping pin for absent repo: $repoid" >&2
+  fi
+done
 {{- end }}
 {{- end }}
 
