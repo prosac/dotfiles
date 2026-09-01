@@ -89,7 +89,14 @@ exec-once = ~/.config/hypr/reading-column.py
 # prints "could not be loaded: …" and still exits 0, so a plain `||` fallback
 # would never fire and the failure would stay silent — the very thing it guards.
 # See ~/Documents/docs/hyprland-hyprtasking-plugin.md
-exec-once = hyprctl plugin load ~/.local/src/hyprtasking/build/libhyprtasking.so | grep -q '^ok' || hyprctl notify -1 10000 "rgb(ff8800)" "hyprtasking failed to load — run hyprtasking-rebuild"
+# `--ensure` loads the existing build and rebuilds ONLY if it will not load, so a
+# normal login compiles nothing. It replaces a bare `plugin load` that merely
+# NOTIFIED on failure: after a routine `dnf update` bumped hyprland 0.56.2-1 -> -2
+# on 2026-08-31 the ABI-pinned .so stopped loading, and the session came up with
+# `hyprtasking:toggle` undefined and Hyprland's on-screen Error Overlay listing it.
+# A notification asking for a manual rebuild is not a fix when the thing it is
+# telling you about is already covering your screen.
+exec-once = ~/.local/bin/hyprtasking-rebuild --ensure
 
 # swayosd-server runs as a systemd user service (swayosd.service), bound to
 # graphical-session.target, so it is not started here.

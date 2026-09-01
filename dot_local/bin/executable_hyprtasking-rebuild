@@ -91,6 +91,71 @@ def reload_plugin():
     print("→ loaded into the running session")
 
 
+def notify(colour, text):
+    """Best-effort desktop notification; never fatal if the shell is not up yet."""
+    run(["hyprctl", "notify", "-1", "8000", colour, f"hyprtasking: {text}"])
+
+
+def is_loaded():
+    return "Hyprtasking" in run(["hyprctl", "plugin", "list"]).stdout
+
+
+def try_load():
+    """Load the existing .so. True only if it ends up in `plugin list`.
+
+    ⚠️ Check `is_loaded()` BEFORE calling this. `hyprctl plugin load` REFUSES a
+    plugin that is already loaded, so on an already-healthy session this would
+    answer False and send us off to rebuild something that was never broken.
+
+    The listing is also the only honest success test even for a genuine load:
+    `hyprctl plugin load` prints its error on STDOUT and still exits 0, so the
+    exit code cannot be trusted -- the same trap the exec-once line documents.
+    """
+    res = run(["hyprctl", "plugin", "load", SO])
+    if res.returncode != 0 or "ok" not in res.stdout:
+        return False
+    return is_loaded()
+
+
+def ensure():
+    """Load the plugin, rebuilding it first only if the current .so will not load.
+
+    This is what the session's exec-once calls. Plugins are ABI-pinned to the
+    exact compositor build, so ANY hyprland update -- including a release bump
+    like 0.56.2-1 -> -2 from a routine `dnf update` -- makes the built .so
+    unloadable. Before this, the session came up with the plugin missing and its
+    dispatchers undefined, which Hyprland reports as `Invalid dispatcher:
+    hyprtasking:toggle` in its on-screen Error Overlay, and the fix was a manual
+    rebuild nobody remembers is needed.
+
+    Cost is paid only when it is actually needed: on a normal login the load
+    succeeds and nothing is compiled.
+    """
+    if is_loaded():
+        print("→ plugin already loaded (nothing to do)")
+        return
+    if not os.path.isfile(SO):
+        print("no built plugin yet — building")
+    elif try_load():
+        print("→ plugin loaded (no rebuild needed)")
+        return
+    else:
+        print("→ plugin failed to load (Hyprland was probably updated) — rebuilding")
+        notify("rgb(ff8800)", "rebuilding for the new Hyprland build...")
+
+    try:
+        check_headers()
+        build()
+        reload_plugin()
+    except SystemExit as exc:
+        # check_headers()/build()/reload_plugin() exit with a message on failure.
+        # Surface it on screen too: exec-once output goes to the Hyprland log,
+        # which is not somewhere a failure gets noticed.
+        notify("rgb(ff0000)", f"rebuild FAILED — {exc}")
+        raise
+    notify("rgb(00ff00)", f"rebuilt for hyprland {rpm_version('hyprland')}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument(
@@ -98,7 +163,17 @@ def main():
         action="store_true",
         help="build only; do not touch the running compositor",
     )
+    ap.add_argument(
+        "--ensure",
+        action="store_true",
+        help="load the existing build; rebuild ONLY if it will not load "
+        "(what the session's exec-once runs)",
+    )
     args = ap.parse_args()
+
+    if args.ensure:
+        ensure()
+        return
 
     check_headers()
     build()
