@@ -2,7 +2,31 @@
 Description=awww wallpaper daemon
 PartOf=graphical-session.target
 After=graphical-session.target
-Requisite=graphical-session.target
+# ⚠️ DO NOT ADD `Requisite=graphical-session.target` HERE. Every other session
+# unit carries it, and on a leaf unit it is harmless -- but waypaper.service has
+# `Requires=awww.service`, and that second hop closes an ordering cycle:
+#
+#   graphical-session.target/verify-active   (the job Requisite= creates)
+#     after waypaper.service/start
+#     after awww.service/start
+#     after graphical-session.target
+#
+# systemd breaks the cycle by DELETING a job, and the job it picks is
+# waypaper.service/start. Consequence: waypaper.service has never started, at any
+# login, since the stack was built on 2026-05-29 -- `ActiveEnterTimestamp` is
+# empty and the journal says so at every boot:
+#
+#   graphical-session.target: Found ordering cycle: ...
+#   Job waypaper.service/start deleted to break ordering cycle ...
+#
+# So `waypaper --restore` never ran and wallpaper restore-on-login never worked;
+# the wallpaper only persisted because a daemon happened to still be alive.
+# Nothing failed, nothing was marked degraded, and no unit reported an error.
+#
+# Requisite= bought a hard "fail if the session is not already up" guard. That is
+# already covered here by ConditionEnvironment= (no XDG_CURRENT_DESKTOP outside a
+# session, e.g. over SSH), by PartOf= for teardown and by After= for ordering --
+# so dropping it costs nothing and is what makes waypaper.service startable.
 ConditionEnvironment=|XDG_CURRENT_DESKTOP=Hyprland
 ConditionEnvironment=|XDG_CURRENT_DESKTOP=niri
 
