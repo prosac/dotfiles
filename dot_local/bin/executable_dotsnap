@@ -7,6 +7,25 @@ ROOT=/home
 SNAPDIR=/home/.snapshots/hourly
 RETAIN=${DOTSNAP_RETAIN:-168}    # ~7 days of hourly
 
+# Not every machine running these dotfiles has a btrfs /home -- a long-lived
+# desktop upgraded across many Fedora releases can easily still be on ext4.
+#
+# Detected at RUNTIME rather than prompted for at `chezmoi init`: the filesystem
+# is a property of the disk, not a choice about the machine, so asking would add
+# a question whose answer is already sitting in `findmnt`. It also means an
+# existing machine that is later reinstalled onto btrfs starts snapshotting with
+# no config change.
+#
+# ⚠️ Exit 0, not 1. dotsnap.service carries OnFailure=notify-failure@%n.service
+# and the timer fires hourly, so failing here would put a desktop notification
+# on screen every hour forever on any non-btrfs machine. `ConditionPathIsMountPoint=/home`
+# in the unit does NOT cover this: /home is very often its own mount on ext4 too.
+fstype=$(findmnt -no FSTYPE --target "$ROOT" 2>/dev/null || true)
+if [ "$fstype" != "btrfs" ]; then
+  echo "dotsnap: $ROOT is ${fstype:-unknown}, not btrfs — nothing to snapshot."
+  exit 0
+fi
+
 stamp=$(date +%Y-%m-%d-%H%M)
 target="$SNAPDIR/$stamp"
 
