@@ -100,6 +100,15 @@ source $ZSH/oh-my-zsh.sh
 # fzf
 alias f='fzf'
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+{{ if eq .passwordManager "bitwarden" -}}
+
+# Bitwarden CLI. There is no standalone `bw` rpm and Bitwarden is installed as a
+# flatpak here, so the binary is only reachable through the flatpak's own
+# command entry point -- `flatpak run com.bitwarden.desktop` alone launches the
+# GUI. Gated on the passwordManager prompt so 1password machines never get a
+# dead alias pointing at a flatpak they do not have.
+alias bw="flatpak run --command=bw com.bitwarden.desktop"
+{{- end }}
 
 # starship prompt
 eval "$(starship init zsh)"
