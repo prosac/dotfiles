@@ -89,11 +89,51 @@ run = '''
 set -e
 src="$(chezmoi source-path)/bootstrap/sudoers/dotsnap.tmpl"
 rendered="$(mktemp)"
+trap 'rm -f "$rendered"' EXIT
 chezmoi execute-template < "$src" > "$rendered"
+
+# The rule uses sudoers regexes, which need sudo >= 1.9.10. On anything older
+# visudo rejects the file -- which is why the check below runs BEFORE the
+# install, not after: a rejected file that is already in /etc/sudoers.d/ breaks
+# every subsequent sudo call, including the one that would remove it.
+ver=$(sudo -V | sed -n '1s/.*version \([0-9.]*\).*/\1/p')
+if [ "$(printf '%s\n1.9.10\n' "$ver" | sort -V | head -1)" != "1.9.10" ]; then
+  echo "ERROR: sudo $ver is too old for sudoers regexes (need >= 1.9.10)." >&2
+  echo "       See the header in bootstrap/sudoers/dotsnap.tmpl." >&2
+  exit 1
+fi
+
+# Validate the RENDERED file first, then install a file already known good.
+visudo -cf "$rendered"
 sudo install -m 440 -o root -g root "$rendered" /etc/sudoers.d/dotsnap
-sudo visudo -cf /etc/sudoers.d/dotsnap
-rm -f "$rendered"
 echo "Installed: /etc/sudoers.d/dotsnap"
+
+# Assert the rule is not just syntactically valid but scoped as intended. The
+# form this replaced (`/home/.snapshots/hourly/*`) permitted BOTH of these,
+# because sudoers matches arguments as one concatenated string in which a
+# wildcard also matches spaces and slashes -- so an extra subvolume could be
+# appended and deleted as root. Test the deny case, not only the allow case:
+# a rule that permits everything passes an allow-only check.
+echo "==> Verifying rule scope (queried from sudo, not read from the file):"
+good="/home/.snapshots/hourly/2026-01-01-0000"
+if sudo -l /usr/sbin/btrfs subvolume delete "$good" >/dev/null 2>&1; then
+  echo "  allow  legitimate snapshot delete            : yes"
+else
+  echo "  allow  legitimate snapshot delete            : NO -- dotsnap will fail to prune" >&2
+  exit 1
+fi
+if sudo -l /usr/sbin/btrfs subvolume delete "$good" /swap >/dev/null 2>&1; then
+  echo "  deny   appended extra subvolume (/swap)      : NO -- RULE IS TOO BROAD" >&2
+  exit 1
+else
+  echo "  deny   appended extra subvolume (/swap)      : yes"
+fi
+if sudo -l /usr/sbin/btrfs subvolume delete /home/.snapshots/hourly/../../../swap >/dev/null 2>&1; then
+  echo "  deny   path traversal out of hourly/         : NO -- RULE IS TOO BROAD" >&2
+  exit 1
+else
+  echo "  deny   path traversal out of hourly/         : yes"
+fi
 '''
 
 [tasks."bootstrap:tmpfiles"]
