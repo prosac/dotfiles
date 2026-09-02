@@ -20,11 +20,49 @@
 # ⚠️ FAILURE MODE THAT IS SILENT AND MUST BE VERIFIED. DMS only uses this file
 # if it can actually READ it (Pam.qml: `customPamActive = lockPamPath !== "" &&
 # customPamWatcher.loaded`). If the file is missing or not world-readable, DMS
-# falls back through its chain to the service named `login` — i.e. straight into
-# the pam_sss double-prompt trap described below, with no error shown. So a
-# missing file does not lock you out, it degrades you to the old broken
-# behaviour. Verify with `mise run bootstrap:pam-dms`, which asserts the file is
-# in place and readable.
+# degrades with no error shown. So a missing file does not lock you out, it
+# degrades you to the old broken behaviour. Verify with `mise run
+# bootstrap:pam-dms`, which asserts the file is in place and readable.
+#
+# WHAT IT DEGRADES *TO*, on dms 1.5.3 — not `login`, as this comment said until
+# 2026-09-02. When `customPamActive` is false and there is no managed
+# /etc/pam.d/dankshell, DMS runs `dms auth resolve-lock` and writes its own
+# fallback stack to ~/.local/state/DankMaterialShell/pam/dankshell (Pam.qml:
+# `ensureUserPamConfig`, upstream #2789), then authenticates against that. The
+# generated file is a copy of system-auth, so it carries BOTH things this stack
+# exists to avoid — `pam_sss.so forward_pass` and `pam_faildelay delay=2000000`
+# — and no pam_u2f at all. The destination changed; the trap did not.
+#
+# It is visible in the journal, which is the only place it shows up:
+#
+#     dms[…]: Starting pam session for user "jo" with config "dankshell"
+#             in dir "/home/jo/.local/state/DankMaterialShell/pam"
+#
+# versus a healthy session, which names this file's basename and its directory:
+#
+#     dms[…]: Starting pam session for user "jo" with config "dms-fido2"
+#             in dir "/etc/pam.d"
+#
+# ⚠️⚠️ INSTALLING THIS FILE INTO A RUNNING SESSION IS NOT ENOUGH. `customPamWatcher`
+# (Pam.qml) is a FileView with NO `watchChanges`, and the per-lock reset path
+# reloads only `u2fConfigWatcher` — the comment there ("FileView cannot watch a
+# path that does not exist yet; re-read so a dedicated service created after
+# startup is used on the next lock") describes this watcher's problem exactly but
+# does not cover it. So `customPamActive` is decided ONCE, when dms.service
+# starts, and a file installed afterwards is never noticed:
+#
+#     mise run bootstrap:pam-dms        # says "Installed / matches"
+#     …and the lock screen still uses the dankshell fallback, all session long.
+#
+# The task cannot detect this — it checks the filesystem, and the filesystem is
+# fine. After installing, either log out and back in, or:
+#
+#     systemctl --user restart dms.service
+#
+# On a bootstrapped machine this never bites, because the file is in place long
+# before the first DMS login. It bites exactly once, on the machine where you
+# just discovered the file was missing — i.e. the moment you most believe you
+# have fixed it. (Diagnosed 2026-09-02 on the Fedora 44 machine.)
 #
 # WHY NOT the shipped `auth include login`: `login` pulls in system-auth, whose
 # authselect **sssd** profile appends, after pam_unix:
