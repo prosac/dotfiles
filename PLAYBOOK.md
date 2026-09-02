@@ -178,6 +178,7 @@ chezmoi cat ~/.zshrc
 - **`apply` prompts for confirmation in a non-TTY context** — target was edited and source would overwrite. Run `re-add` first to capture the target edit, then continue.
 - **Logged into "Hyprland (DMS)" and there is no bar / no notifications / no lock** — a Qt update probably orphaned quickshell's private symbols. `mise run check:quickshell`, then `mise run bootstrap:quickshell-rebuild`. See *quickshell is ABI-pinned to Qt*.
 - **A user unit fails in a restart loop after a machine migration** — `~/.config/systemd/user/*.wants/` is per-machine state that travels with `~/.config`, so a unit can arrive already enabled on a host that never had its dependency. The `enable_if_exists` guards in `run_onchange_after_enable-session-services.sh` only run at apply time; the durable fix is an `ExecCondition=` in the unit itself, as `opentabletdriver.service` has.
+- **Hyprland's on-screen Error Overlay greets a new machine** — run `hyprctl configerrors`, which is the same list without the red box. Both known causes are things chezmoi deliberately does not manage, so they only ever bite a fresh host: `source= globbing error` is the missing per-machine `monitors.conf` (seeded now by `run_onchange_after_init-hypr-monitors.sh`; run `nwg-displays` for a real layout), and `Invalid dispatcher … "hyprtasking:toggle"` means the plugin is not loaded — `~/.local/bin/hyprtasking-rebuild` clones and builds it, and needs `hyprland-devel` at the *same version* as `hyprland`.
 
 ## What's deliberately NOT in this repo
 
