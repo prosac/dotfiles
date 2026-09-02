@@ -428,8 +428,24 @@ bind = $mainMod, Space, exec, $menu       # macOS Spotlight-style launcher trigg
 # NB: no `, escape` bind (which the plugin's README suggests) — a bound key is
 # consumed by the compositor whether or not the dispatcher acts, so a global
 # Escape bind would stop emacs/evil and terminals from ever seeing Escape.
-bind = $mainMod, Tab, hyprtasking:toggle, cursor
-bind = $mainMod SHIFT, Tab, hyprtasking:toggle, all
+#
+# Dispatched through `exec, hyprctl dispatch` rather than named directly, because
+# Hyprland RESOLVES DISPATCHER NAMES AT CONFIG-PARSE TIME and the plugin cannot
+# possibly be loaded yet: binds are parsed while the compositor is still starting,
+# exec-once only runs once it is up. A direct `hyprtasking:toggle` bind is
+# therefore an error on EVERY login --
+#
+#   Config error at line …: Invalid dispatcher, requested "hyprtasking:toggle"
+#   does not exist
+#
+# -- twice, in the on-screen Error Overlay. It clears itself a moment later (the
+# plugin reloads the config when it registers), so it is purely cosmetic, but
+# "purely cosmetic" is a banner across your screen at the start of every session.
+# `exec` is a core dispatcher that always exists, so nothing is unresolved at
+# parse time and the toggle is resolved at keypress, by which point the plugin is
+# there. Costs one short-lived hyprctl per press.
+bind = $mainMod, Tab, exec, hyprctl dispatch hyprtasking:toggle cursor
+bind = $mainMod SHIFT, Tab, exec, hyprctl dispatch hyprtasking:toggle all
 
 # kando pie menu — moved off Super+Tab for hyprtasking; keeps the launchers
 # together on Space ($menu on Super+Space, kando on Super+SHIFT+Space).
