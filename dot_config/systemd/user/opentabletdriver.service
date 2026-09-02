@@ -9,6 +9,27 @@ ConditionEnvironment=|XDG_CURRENT_DESKTOP=niri
 
 [Service]
 Type=simple
+# ⚠️ WITHOUT THIS, A MISSING FLATPAK IS AN INFINITE RESTART LOOP.
+#
+# run_onchange_after_enable-session-services.sh only enables this unit when the
+# Flatpak is present, but that guard runs at `chezmoi apply` time and the
+# enablement it writes is a symlink under ~/.config/systemd/user/*.wants/ --
+# which is per-machine state that gets carried across machine migrations along
+# with the rest of ~/.config. So a host that never had the Flatpak can still
+# inherit an enabled unit. That is this machine: `flatpak run` answers
+#
+#     error: app/net.opentabletdriver.OpenTabletDriver/x86_64/master not installed
+#
+# and exits 1, which is `Restart=on-failure` + `RestartSec=2` forever. It logged
+# 816 failures in the first four minutes of the 2026-09-02 session and would
+# have kept going all day. Nothing caps it: ExecStopPost also fails, so each
+# cycle re-arms rather than converging on the start limit.
+#
+# ExecCondition (not ExecStartPre) is the right lever: a non-zero exit in 1..254
+# makes systemd SKIP the unit and record it as a clean `condition failed`, with
+# no restart and no failed-unit noise. ExecStartPre would count as a failure and
+# feed the same loop.
+ExecCondition=/bin/sh -c 'flatpak info net.opentabletdriver.OpenTabletDriver >/dev/null 2>&1'
 # start-otd.sh --daemon-only sets LD_LIBRARY_PATH=/app/lib64 and then execs
 # OpenTabletDriver.Daemon; calling the daemon binary directly skips that.
 # The GUI (flatpak run net.opentabletdriver.OpenTabletDriver) attaches to
