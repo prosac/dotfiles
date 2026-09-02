@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+"""Rebuild quickshell against the currently installed Qt.
+
+quickshell links Qt's PRIVATE API. Those symbols carry a version tag
+(`Qt_6.11_PRIVATE_API`) but no stability promise: a qt6-qtbase update can change
+them within the same 6.11.x series. When that happens the COPR binary stops
+resolving and `qs` dies before it draws anything:
+
+    qs: symbol lookup error: qs: undefined symbol:
+      _ZN23QUntypedPropertyBindingC1EP23QPropertyBindingPrivate,
+      version Qt_6.11_PRIVATE_API
+
+That is exit code 127, which takes dms.service down with it. systemd retries 5
+times in 8 seconds, hits the start limit, and gives up -- so the "Hyprland (DMS)"
+session comes up with NO bar, NO notifications, NO OSD, NO tray, NO polkit agent
+and NO lock screen, from a routine `dnf update` that touched nothing but Qt.
+This happened on 2026-09-02: qt6-qtbase 6.11.2-2 landed at 10:36 and the 11:35
+login had no shell.
+
+WHY THIS IS NOT FIXABLE BY WAITING FOR THE COPR
+
+avengemedia/danklinux rebuilds quickshell when it notices, not when Fedora ships
+Qt, and the rebuild usually carries the SAME n-v-r -- so `dnf upgrade` sees
+nothing to do and the broken binary stays installed. There is no version bump to
+wait for and nothing to pin.
+
+WHAT PROTECTS THE SESSION
+
+Two independent things, and the second is the one that matters at 9am:
+
+  1. this script, run manually after a Qt update (or after a broken login);
+  2. `--check`, which ~/.local/bin/hyprland-dms runs BEFORE it masks anything.
+     A failing check makes the wrapper start the ordinary Hyprland shell stack
+     instead, so the worst case is waybar instead of DMS -- not an empty screen.
+
+The rebuild itself needs sudo (builddep + reinstall), so it deliberately does NOT
+run at login: a GDM session entry point has nowhere to prompt for a password.
+
+Install the rebuilt package with `dnf reinstall`, i.e. keeping the COPR n-v-r
+rather than tagging it `.local`. A same-n-v-r reinstall is a single atomic rpm
+transaction; an EVR bump would be an upgrade that could leave the machine with no
+quickshell at all if it failed halfway, and losing the shell is the exact failure
+being defended against. The cost is that `rpm -q` cannot tell you whether the
+installed build is the COPR one or ours -- so the stamp file records what it was
+built against instead, and `--check -v` prints it.
+
+See PLAYBOOK.md ("quickshell is ABI-pinned to Qt").
+"""
+
+import argparse
+import glob
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+WORKDIR = os.path.expanduser("~/.cache/quickshell-rebuild")
+STAMP = os.path.join(WORKDIR, "built-against.json")
+# Rebuilt against private Qt symbols, so the stamp tracks both Qt packages that
+# actually export them. qtdeclarative matters as much as qtbase: quickshell uses
+# QQmlEngine/QQuickItem internals too.
+ABI_PKGS = ("qt6-qtbase", "qt6-qtdeclarative")
+
+
+def run(cmd, **kw):
+    return subprocess.run(cmd, text=True, capture_output=True, **kw)
+
+
+def rpm_version(pkg):
+    res = run(["rpm", "-q", "--qf", "%{evr}", pkg])
+    return res.stdout.strip() if res.returncode == 0 else None
+
+
+def abi_versions():
+    return {p: rpm_version(p) for p in ABI_PKGS}
+
+
+def read_stamp():
+    try:
+        with open(STAMP) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def qs_loads():
+    """True if `qs` resolves its dynamic symbols.
+
+    `qs --version` is the whole test: it links the full Qt stack before it prints
+    anything, so an ABI break fails here exactly as it fails at session start.
+    A timeout counts as broken -- a `qs` that cannot answer its own version in
+    15s will not bring a session up either.
+    """
+    try:
+        res = subprocess.run(
+            ["qs", "--version"], text=True, capture_output=True, timeout=15
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False, ""
+    return res.returncode == 0, (res.stdout + res.stderr).strip()
+
+
+def check(verbose):
+    ok, output = qs_loads()
+    if ok:
+        print(f"→ qs loads: {output.splitlines()[0] if output else 'ok'}")
+    else:
+        print("qs does NOT load against the installed Qt:", file=sys.stderr)
+        print(f"  {output or '(no output)'}", file=sys.stderr)
+
+    if verbose or not ok:
+        now = abi_versions()
+        stamp = read_stamp()
+        for pkg, evr in now.items():
+            was = (stamp or {}).get("abi", {}).get(pkg)
+            if stamp is None:
+                note = "(never rebuilt locally — this is the COPR build)"
+            elif was == evr:
+                note = "(matches last local rebuild)"
+            else:
+                note = f"(last local rebuild was against {was})"
+            print(f"  {pkg} {evr} {note}", file=sys.stderr if not ok else sys.stdout)
+
+    if not ok:
+        print("\nFix it with:  quickshell-rebuild", file=sys.stderr)
+    return 0 if ok else 1
+
+
+def fetch_srpm():
+    """Download the SRPM for the quickshell that dnf would install.
+
+    Deliberately `dnf download --source` rather than the COPR API: the repo is
+    already configured and enabled, so this always tracks whatever version the
+    machine is actually meant to have, with no build-id URL to keep in sync.
+    """
+    for stale in glob.glob(os.path.join(WORKDIR, "*.src.rpm")):
+        os.remove(stale)
+    print("→ fetching quickshell SRPM")
+    res = run(["dnf", "download", "--source", "quickshell"], cwd=WORKDIR)
+    srpms = glob.glob(os.path.join(WORKDIR, "quickshell-*.src.rpm"))
+    if not srpms:
+        sys.exit(f"could not download the quickshell SRPM:\n{res.stdout}\n{res.stderr}")
+    return srpms[0]
+
+
+def builddep(srpm):
+    print("→ installing build dependencies (sudo)")
+    if subprocess.run(["sudo", "dnf", "builddep", "-y", srpm]).returncode != 0:
+        sys.exit("dnf builddep failed — cannot rebuild without the Qt devel headers")
+
+
+def rebuild(srpm):
+    topdir = os.path.join(WORKDIR, "rpmbuild")
+    log = os.path.join(WORKDIR, "build.log")
+    print(f"→ rebuilding {os.path.basename(srpm)} (several minutes)")
+    with open(log, "w") as fh:
+        res = subprocess.run(
+            ["rpmbuild", "--rebuild", "--define", f"_topdir {topdir}", srpm],
+            stdout=fh,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    if res.returncode != 0:
+        with open(log) as fh:
+            tail = "".join(fh.readlines()[-40:])
+        sys.exit(f"rebuild FAILED — last 40 lines of {log}:\n{tail}")
+
+    rpms = [
+        r
+        for r in glob.glob(os.path.join(topdir, "RPMS", "*", "quickshell-*.rpm"))
+        if "debuginfo" not in r and "debugsource" not in r
+    ]
+    if not rpms:
+        sys.exit(f"rebuild produced no quickshell rpm — see {log}")
+    built = rpms[0]
+    print(f"→ built {os.path.basename(built)} ({os.path.getsize(built) // 1024} KiB)")
+    return built
+
+
+def install(rpm_path):
+    """Reinstall over the same n-v-r, in one rpm transaction. See module docstring."""
+    print("→ installing the rebuilt package (sudo)")
+    if subprocess.run(["sudo", "dnf", "-y", "reinstall", rpm_path]).returncode != 0:
+        sys.exit(f"dnf reinstall failed — the previous quickshell is still in place")
+
+
+def write_stamp(srpm):
+    os.makedirs(WORKDIR, exist_ok=True)
+    with open(STAMP, "w") as fh:
+        json.dump(
+            {
+                "quickshell": rpm_version("quickshell"),
+                "srpm": os.path.basename(srpm),
+                "abi": abi_versions(),
+                "built_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            },
+            fh,
+            indent=2,
+        )
+        fh.write("\n")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument(
+        "--check",
+        action="store_true",
+        help="only report whether qs loads against the installed Qt; exit 1 if "
+        "it does not (what ~/.local/bin/hyprland-dms runs before masking)",
+    )
+    ap.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="with --check, also print the Qt versions and the last local rebuild",
+    )
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="rebuild even when the installed qs already loads",
+    )
+    args = ap.parse_args()
+
+    if args.check:
+        sys.exit(check(args.verbose))
+
+    if not args.force:
+        ok, output = qs_loads()
+        if ok:
+            print(f"→ qs already loads ({output.splitlines()[0] if output else 'ok'})")
+            print("  nothing to do — use --force to rebuild anyway")
+            return
+
+    if not shutil.which("rpmbuild"):
+        sys.exit("rpmbuild not installed:  sudo dnf install -y rpm-build")
+
+    os.makedirs(WORKDIR, exist_ok=True)
+    srpm = fetch_srpm()
+    builddep(srpm)
+    built = rebuild(srpm)
+    install(built)
+
+    ok, output = qs_loads()
+    if not ok:
+        sys.exit(
+            f"rebuilt and installed, but qs STILL does not load:\n  {output}\n"
+            "The break is not a Qt ABI mismatch — check `dms doctor`."
+        )
+    write_stamp(srpm)
+    print(f"→ qs loads: {output.splitlines()[0] if output else 'ok'}")
+    print("  log out and back in to get DMS running on the new build")
+
+
+if __name__ == "__main__":
+    main()

@@ -364,6 +364,14 @@ ls -Zd /swap | sed 's/^/  /'
 sudo ls -Zd /swap/swapfile | sed 's/^/  /'
 '''
 
+[tasks."bootstrap:quickshell-rebuild"]
+description = "Rebuild quickshell against the installed Qt after a qt6 update broke the DMS session (asks for sudo)"
+run = '~/.local/bin/quickshell-rebuild'
+
+[tasks."check:quickshell"]
+description = "Report whether quickshell still loads against the installed Qt (the check hyprland-dms runs before masking the default shell)"
+run = '~/.local/bin/quickshell-rebuild --check -v'
+
 # starship is here rather than installed by its own upstream script: the
 # install-packages script used to pipe https://starship.rs/install.sh into a
 # ROOT shell, unattended, on every fresh bootstrap. mise resolves starship
