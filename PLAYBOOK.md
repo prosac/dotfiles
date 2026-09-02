@@ -114,6 +114,8 @@ All global (defined in `~/.config/mise/config.toml`, reachable from any cwd).
 | `dots:latest`              | print path to most recent snapshot                                |
 | `dots:review [-- name]`    | bucketed diff against latest (or specified) snapshot              |
 | `bootstrap:sudoers`        | install `/etc/sudoers.d/dotsnap` (one-time per machine)           |
+| `check:quickshell`         | does `qs` still load against the installed Qt?                    |
+| `bootstrap:quickshell-rebuild` | rebuild quickshell after a qt6 update broke the DMS session   |
 
 Grows as workflows land.
 
@@ -173,6 +175,7 @@ chezmoi cat ~/.zshrc
 - **Pre-commit hook blocks a commit** — inspect with `gitleaks git --staged --verbose`. Fix the leak; never `--no-verify`.
 - **Pull fails with local source drift** — run `chezmoi re-add` first to capture live edits; commit; then `git pull --rebase`.
 - **`apply` prompts for confirmation in a non-TTY context** — target was edited and source would overwrite. Run `re-add` first to capture the target edit, then continue.
+- **Logged into "Hyprland (DMS)" and there is no bar / no notifications / no lock** — a Qt update probably orphaned quickshell's private symbols. `mise run check:quickshell`, then `mise run bootstrap:quickshell-rebuild`. See *quickshell is ABI-pinned to Qt*.
 
 ## What's deliberately NOT in this repo
 
@@ -246,6 +249,28 @@ Everything above is seeded once into `~/.config/DankMaterialShell/settings.json`
 **Wallpaper is DMS's in this session.** `awww.service` and `waypaper.service` are masked like the other superseded units, and Super+W is re-pointed at `dms ipc call dash toggle wallpaper` by `dms-binds`. Both halves are required: a mask alone cannot stop waypaper, which starts a daemon itself whenever `pgrep awww-daemon` comes back empty, so one keypress would put an unmanaged daemon on top of DMS's layer.
 
 This used to say wallpaper was left alone because it is "entangled with `toggle-color-scheme`". It is not — `toggle-color-scheme` never references awww/swww/waypaper, and waypaper's `post_command` is empty. The entanglement that mattered was matugen's, and that is already handled by the dnf exclude plus the DMS template flags.
+
+#### quickshell is ABI-pinned to Qt
+
+⚠️ **A routine `dnf update` that touches only Qt can leave this session with no shell at all.** quickshell links Qt's *private* API. Those symbols carry a version tag (`Qt_6.11_PRIVATE_API`) but no stability promise, so a qt6-qtbase update *inside the same 6.11.x series* can orphan them:
+
+```
+qs: symbol lookup error: qs: undefined symbol:
+  _ZN23QUntypedPropertyBindingC1EP23QPropertyBindingPrivate, version Qt_6.11_PRIVATE_API
+```
+
+That is exit 127, which takes `dms.service` with it. systemd retries 5 times in 8 seconds, hits the start limit and stops. Happened on 2026-09-02: `qt6-qtbase 6.11.2-2` landed at 10:36 and the 11:35 login had no bar, no notifications, no OSD, no tray, no polkit agent and no lock screen.
+
+**Waiting for the COPR does not fix it.** `avengemedia/danklinux` rebuilds when it notices, not when Fedora ships Qt, and the rebuild usually carries the **same n-v-r** — so `dnf upgrade` sees nothing to do and the broken binary stays installed. There is no version to pin and no bump to wait for.
+
+```sh
+mise run check:quickshell             # does qs still load? (also prints what it was last built against)
+mise run bootstrap:quickshell-rebuild # rebuild against the installed Qt + reinstall (sudo)
+```
+
+The rebuild reinstalls over the same n-v-r rather than tagging the result `.local`: a same-n-v-r `dnf reinstall` is one atomic rpm transaction, where an EVR bump would be an upgrade that could leave the machine with **no** quickshell if it failed halfway — and losing the shell is the thing being defended against. The cost is that `rpm -q` cannot tell you whether the installed build is the COPR one or yours, so `~/.cache/quickshell-rebuild/built-against.json` records the Qt versions it was built against instead.
+
+**The session no longer dies from this.** `~/.local/bin/hyprland-dms` runs `quickshell-rebuild --check` *before* it masks anything. If `qs` cannot even print its version, the wrapper leaves the default shell stack alone and logs why to the journal (`journalctl --user -t hyprland-dms`), so you get an ordinary Hyprland session — waybar, wayland-noti, swayosd, nm-applet, mate-polkit, hypridle/hyprlock — instead of an empty screen. The check fails *open*: if the script is missing or unrunnable, DMS starts as before. Repair needs sudo, so it is deliberately never attempted at login — a GDM session entry point has nowhere to prompt for a password.
 
 ## Stages
 
