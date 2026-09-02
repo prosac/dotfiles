@@ -116,6 +116,7 @@ All global (defined in `~/.config/mise/config.toml`, reachable from any cwd).
 | `bootstrap:sudoers`        | install `/etc/sudoers.d/dotsnap` (one-time per machine)           |
 | `check:quickshell`         | does `qs` still load against the installed Qt?                    |
 | `bootstrap:quickshell-rebuild` | rebuild quickshell after a qt6 update broke the DMS session   |
+| `bootstrap:flatpak-mount-ordering` | order `flatpak-add-fedora-repos` after the disk holding `/var/lib/flatpak` |
 
 Grows as workflows land.
 

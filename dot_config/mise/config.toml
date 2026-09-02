@@ -372,6 +372,66 @@ run = '~/.local/bin/quickshell-rebuild'
 description = "Report whether quickshell still loads against the installed Qt (the check hyprland-dms runs before masking the default shell)"
 run = '~/.local/bin/quickshell-rebuild --check -v'
 
+# /var/lib/flatpak is a symlink to a directory on a separate filesystem on this
+# machine (the SSD raid), because the flatpak system installation is far too big
+# for the root subvolume. Fedora's own flatpak-add-fedora-repos.service has no
+# idea about that: it is ordered only after basic.target, so at boot it runs
+# BEFORE the mount and dies with
+#
+#     error: Unable to create repository at /var/lib/flatpak
+#            (Creating repo: mkdirat: No such file or directory)
+#
+# leaving a failed system unit on every single boot. Nothing downstream breaks --
+# the remote is already configured from a previous successful run, so this is
+# noise rather than damage -- but it is noise that sits in `systemctl
+# list-units --state=failed` forever and trains you to ignore that list.
+#
+# The drop-in is GENERATED rather than shipped as a static file in bootstrap/,
+# because the mount point is per-machine: it is discovered here with findmnt
+# instead of being hardcoded, and on a machine where /var/lib/flatpak is an
+# ordinary directory on / the task correctly does nothing at all.
+#
+# ⚠️ RequiresMountsFor= is given the RESOLVED path, not /var/lib/flatpak.
+# systemd builds the mount unit names by walking the path prefixes literally and
+# does not follow symlinks along the way, so pointing it at the symlink would
+# generate a dependency on a -.mount that is always already up -- i.e. it would
+# look correct and change nothing.
+[tasks."bootstrap:flatpak-mount-ordering"]
+description = "Order flatpak-add-fedora-repos.service after the filesystem holding /var/lib/flatpak (asks for sudo)"
+run = '''
+set -e
+real="$(readlink -f /var/lib/flatpak)"
+if [ ! -e "$real" ]; then
+  echo "/var/lib/flatpak resolves to $real, which does not exist — is the disk mounted?" >&2
+  exit 1
+fi
+mp="$(findmnt -no TARGET --target "$real")"
+echo "/var/lib/flatpak -> $real (on mount $mp)"
+if [ "$mp" = "/" ]; then
+  echo "Flatpak lives on the root filesystem — no ordering needed, nothing to do."
+  exit 0
+fi
+
+dir=/etc/systemd/system/flatpak-add-fedora-repos.service.d
+sudo install -d -m 755 "$dir"
+printf '%s\n' \
+  "# Managed by \`mise run bootstrap:flatpak-mount-ordering\` — do not edit by hand." \
+  "# $real lives on $mp, which is not mounted when basic.target is reached." \
+  "[Unit]" \
+  "RequiresMountsFor=$mp" \
+  | sudo tee "$dir/10-wait-for-mount.conf" >/dev/null
+sudo chmod 644 "$dir/10-wait-for-mount.conf"
+sudo systemctl daemon-reload
+echo "Installed: $dir/10-wait-for-mount.conf"
+echo "Effective ordering:"
+systemctl show flatpak-add-fedora-repos.service -p RequiresMountsFor -p After \
+  | tr ' ' '\n' | grep -iE "mount|RequiresMountsFor" | sed 's/^/  /'
+# The unit is ConditionPathExists-free and idempotent (`remote-add --if-not-exists`),
+# so clearing the failed state now means the next boot is the real test.
+sudo systemctl reset-failed flatpak-add-fedora-repos.service 2>/dev/null || true
+echo "Failed state cleared — it should stay clean from the next boot on."
+'''
+
 # starship is here rather than installed by its own upstream script: the
 # install-packages script used to pipe https://starship.rs/install.sh into a
 # ROOT shell, unattended, on every fresh bootstrap. mise resolves starship
