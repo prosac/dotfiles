@@ -183,10 +183,50 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Masking happens BEFORE `uwsm start`, i.e. before graphical-session.target is
-# reached, so the units are never pulled in and never need stopping.
-mask_units
-for u in "${ENABLE_UNITS[@]}"; do systemctl --user --runtime enable "$u" || true; done
+# ⚠️ PREFLIGHT: DO NOT DISMANTLE THE DEFAULT SHELL FOR A DMS THAT CANNOT START.
+#
+# quickshell links Qt's PRIVATE API, so a qt6-qtbase update inside the same 6.11.x
+# series can leave `qs` with unresolved symbols. It then exits 127, dms.service
+# burns its 5 restarts in 8 seconds and gives up -- but by then this script has
+# already masked waybar, notifications, OSD, tray, polkit and idle/lock. The
+# result is a session with no shell at all: the DMS one is dead and the ordinary
+# one was masked out from under it. That is the 2026-09-02 11:35 login.
+#
+# The masks are the damage, and they are entirely avoidable: if `qs` cannot even
+# print its version, DMS is not going to draw a bar, so leave the default stack
+# alone and let graphical-session.target bring up waybar & co. as usual. A
+# degraded session you can work in beats an empty screen, and the journal says
+# exactly which it is.
+#
+# Repairing it needs sudo (builddep + reinstall), so it is NOT attempted here --
+# a GDM session entry point has nowhere to prompt for a password. `quickshell-
+# rebuild` is the fix, and the message below is where you find that out.
+#
+# `|| true` on the check itself: if the script is missing or unrunnable, fail
+# OPEN and start DMS as before. An absent healthcheck must not be what stops the
+# shell from starting.
+dms_preflight_ok=yes
+if [[ -x "$HOME/.local/bin/quickshell-rebuild" ]]; then
+  "$HOME/.local/bin/quickshell-rebuild" --check >/dev/null 2>&1 || dms_preflight_ok=no
+fi
+
+if [[ "$dms_preflight_ok" == no ]]; then
+  # systemd-cat so this lands in the journal: at this point in a GDM session
+  # entry point there is no terminal, and no notification daemon is running yet.
+  "$HOME/.local/bin/quickshell-rebuild" --check -v 2>&1 |
+    systemd-cat -t hyprland-dms -p err || true
+  {
+    echo "quickshell cannot start (see above) — NOT masking the default shell stack."
+    echo "This session will come up as ordinary Hyprland: waybar, wayland-noti,"
+    echo "swayosd, nm-applet, mate-polkit, elephant and hypridle/hyprlock."
+    echo "Repair with:  quickshell-rebuild   (needs sudo), then log out and back in."
+  } | systemd-cat -t hyprland-dms -p err || true
+else
+  # Masking happens BEFORE `uwsm start`, i.e. before graphical-session.target is
+  # reached, so the units are never pulled in and never need stopping.
+  mask_units
+  for u in "${ENABLE_UNITS[@]}"; do systemctl --user --runtime enable "$u" || true; done
+fi
 
 # NB: no `exec`. This shell must stay alive as uwsm's parent so the EXIT trap
 # above still runs when the session ends.
