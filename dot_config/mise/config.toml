@@ -268,6 +268,27 @@ else:
     ok = v == "/etc/pam.d/dms-fido2"
     print(f"  {v!r} {'(matches)' if ok else '(MISMATCH — the key will not be armed)'}")
 EOF
+# A running dms decided whether to use this file ONCE, at startup: Pam.qml's
+# customPamWatcher is a FileView with no watchChanges, and only u2fConfigWatcher
+# is re-read per lock. So installing the file under a dms that started earlier
+# changes nothing until dms restarts -- and every check above still says "fine",
+# because the filesystem IS fine. Compare the two timestamps and say so.
+if systemctl --user is-active --quiet dms.service; then
+  started=$(date -d "$(systemctl --user show dms.service -p ActiveEnterTimestamp --value)" +%s 2>/dev/null || echo 0)
+  installed=$(stat -c %Y /etc/pam.d/dms-fido2)
+  echo "Live session:"
+  if [ "$started" -gt 0 ] && [ "$started" -lt "$installed" ]; then
+    echo "  ⚠️  dms.service started BEFORE this file was installed, so it is still"
+    echo "      using the ~/.local/state/DankMaterialShell/pam/dankshell fallback"
+    echo "      (system-auth: pam_sss double prompt, 2s faildelay, no pam_u2f)."
+    echo "      Pick it up with:  systemctl --user restart dms.service"
+  else
+    echo "  dms.service started after this file was installed — stack is live."
+  fi
+else
+  echo "Live session:"
+  echo "  dms.service not running (default Hyprland or niri) — nothing to reload."
+fi
 '''
 
 [tasks."bootstrap:dms-session"]
