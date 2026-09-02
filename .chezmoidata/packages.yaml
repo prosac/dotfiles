@@ -124,6 +124,19 @@ packages:
     # would put a second wallpaper daemon on the machine with nothing enabling
     # it. It stays installed on hosts that already have it; dnf only adds.
     - hyprland
+    # Headers for the hyprtasking plugin (Super+Tab overview), built by
+    # ~/.local/bin/hyprtasking-rebuild. Hyprland plugins are ABI-pinned to the
+    # exact compositor build, so this MUST stay at the same version as hyprland
+    # -- the rebuild script refuses to build on a mismatch rather than produce a
+    # .so that crashes the compositor on load. Both come from the same COPR and
+    # the `hypr*` includepkgs pin already covers it, so dnf keeps them in step.
+    #
+    # Without it a fresh machine cannot build the plugin at all, and the only
+    # symptom is Hyprland's on-screen Error Overlay reporting
+    # `hyprtasking:toggle` as an invalid dispatcher -- three steps removed from
+    # "a -devel package is missing". That is how this machine came up on
+    # 2026-09-02.
+    - hyprland-devel
     - hypridle
     - hyprlock
     - waybar

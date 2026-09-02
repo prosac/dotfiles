@@ -6,6 +6,8 @@ be rebuilt after EVERY Hyprland update or `hyprctl plugin load` fails and the
 Super+Tab overview is silently gone (hyprland.conf's exec-once notifies instead).
 
 What it does:
+  0. clones the plugin source if it is not there yet (a fresh machine has no
+     ~/.local/src at all);
   1. refuses to build when the installed hyprland-devel headers do not match the
      Hyprland package — building against the wrong headers is exactly what makes
      a plugin crash the compositor on load;
@@ -13,10 +15,23 @@ What it does:
   3. hot-swaps the plugin in the running session (unload + load), unless
      --no-reload.
 
-⚠️ The checkout is the unmerged 0.56.1 fix (raybbian/hyprtasking#123, fork
-yerlotic) because upstream main only supports Hyprland <= 0.56.0. After a
-Hyprland MINOR bump the fork may not compile at all — then check whether #123
-merged and move to `hyprpm add https://github.com/raybbian/hyprtasking`.
+UPSTREAM, not a fork, since 2026-09-02. This used to track yerlotic's branch for
+the unmerged raybbian/hyprtasking#123 ("Chase hyprland v0.56.1"), because
+upstream main then supported Hyprland <= 0.56.0 only. #123 has since MERGED at
+exactly the commit this pinned (ee5b4c6688f5), so upstream carries the fix and
+the fork is redundant.
+
+WHY NOT hyprpm, which the old note here suggested moving to once #123 merged:
+hyprpm builds HYPRLAND ITSELF from source to produce headers, so it wants
+Hyprland's full BuildRequires set (59 entries — glslang, sdbus-c++, libliftoff,
+…) and recompiles the compositor on every `hyprpm update` after a version bump.
+Building against the packaged hyprland-devel costs one package and compiles only
+the plugin. Measured on 2026-09-02: hyprpm got as far as cloning 208 MB into
+/run (tmpfs, i.e. RAM) and then failed cmake configure on a missing glslang.
+
+⚠️ Requires hyprland-devel, which MUST match the hyprland package exactly.
+It is in .chezmoidata/packages.yaml so a bootstrapped machine has it; check
+`rpm -q hyprland hyprland-devel` if a build ever fails on missing headers.
 
 The running compositor's version is deliberately NOT consulted: after `dnf
 upgrade` the packages are new while the session still runs the old build, and the
@@ -32,6 +47,7 @@ import sys
 
 SRC = os.path.expanduser("~/.local/src/hyprtasking")
 SO = os.path.join(SRC, "build", "libhyprtasking.so")
+REPO = "https://github.com/raybbian/hyprtasking"
 
 
 def run(cmd, **kw):
@@ -61,7 +77,29 @@ def check_headers():
     return runtime
 
 
+def ensure_source():
+    """Clone the plugin source if it is not there.
+
+    ~/.local/src is not chezmoi-managed (it is a git checkout, not a dotfile), so
+    a freshly bootstrapped machine has no directory at all. Before this, that
+    surfaced only as the compositor's on-screen Error Overlay reporting
+    `hyprtasking:toggle` as an invalid dispatcher, three steps removed from the
+    actual cause -- exec-once ran, the script exited "plugin source missing at
+    …", and nobody reads exec-once output.
+    """
+    if os.path.isdir(os.path.join(SRC, ".git")):
+        return
+    if os.path.exists(SRC):
+        sys.exit(f"{SRC} exists but is not a git checkout — move it aside and retry")
+    print(f"→ cloning {REPO} into {SRC}")
+    os.makedirs(os.path.dirname(SRC), exist_ok=True)
+    res = run(["git", "clone", "--depth", "1", REPO, SRC])
+    if res.returncode != 0:
+        sys.exit(f"clone failed:\n{res.stdout}\n{res.stderr}")
+
+
 def build():
+    ensure_source()
     if not os.path.isdir(SRC):
         sys.exit(f"plugin source missing at {SRC}")
     setup = run(

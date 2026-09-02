@@ -74,16 +74,28 @@ exec-once = ~/.config/hypr/monitor-hotplug.py
 # See the reading-column note in ~/Documents/docs/.
 exec-once = ~/.config/hypr/reading-column.py
 
-# hyprtasking — workspace overview plugin (Super+Tab). Built by hand rather than
-# via hyprpm: upstream only supports Hyprland up to v0.56.0, so this is the
-# unmerged PR #123 fix for 0.56.1 (raybbian/hyprtasking#123, fork yerlotic, 2
-# commits = +4/-4 porting getWorkspaceByID/createNewWorkspace to the new
-# State::workspaceState() API). Source: ~/.local/src/hyprtasking @ ee5b4c6688.
+# hyprtasking — workspace overview plugin (Super+Tab). Built from UPSTREAM
+# raybbian/hyprtasking against the packaged hyprland-devel headers; the source is
+# cloned into ~/.local/src/hyprtasking by hyprtasking-rebuild itself, so a fresh
+# machine needs no manual checkout.
+#
+# This tracked yerlotic's fork until 2026-09-02, for the then-unmerged
+# raybbian/hyprtasking#123 ("Chase hyprland v0.56.1") — upstream main supported
+# Hyprland <= 0.56.0 only. #123 has since merged, at exactly the commit that was
+# pinned (ee5b4c6688f5), so upstream carries the fix and the fork is redundant.
+#
+# WHY STILL NOT hyprpm, which the old note here planned to move to once #123
+# merged: hyprpm builds HYPRLAND ITSELF from source to get headers, so it wants
+# the compositor's full BuildRequires set (59 entries) and recompiles it on every
+# `hyprpm update` after a version bump. Against packaged headers this costs one
+# package (hyprland-devel) and compiles only the plugin. Tried on 2026-09-02:
+# hyprpm cloned 208 MB into /run — tmpfs, i.e. RAM — then failed cmake configure
+# on a missing glslang, with 58 more BuildRequires behind it.
 #
 # ⚠️ Hyprland plugins are ABI-pinned to the exact compositor build. EVERY Hyprland
 # update needs `~/.local/bin/hyprtasking-rebuild` (rebuild against the new
 # headers) or this load fails and the overview is silently gone — hence the
-# fallback notification. Swap back to `hyprpm` once #123 merges upstream.
+# fallback notification.
 #
 # ⚠️ The success test is `grep -q '^ok'`, NOT the exit code: `hyprctl plugin load`
 # prints "could not be loaded: …" and still exits 0, so a plain `||` fallback
