@@ -238,7 +238,18 @@ Verify a running session with `mise run check:dms-session`.
 mise run bootstrap:pam-dms            # installs /etc/pam.d/dms-fido2 and asserts it is readable
 ```
 
-⚠️ **That has a silent failure mode.** DMS only honours `lockPamPath` if it can *read* the file; otherwise it falls back down its chain to the `login` service — i.e. straight into the `pam_sss` double-prompt trap that this file exists to avoid, with nothing shown on screen. A missing file does not lock you out, it degrades you to the old three-Enter behaviour. The mise task above asserts both readability and that `settings.json` points at the right path.
+⚠️ **That has two silent failure modes**, and the mise task checks for both.
+
+*The file is missing or unreadable.* DMS only honours `lockPamPath` if it can *read* the file. Otherwise (dms 1.5.3) it runs `dms auth resolve-lock` and writes its own fallback stack to `~/.local/state/DankMaterialShell/pam/dankshell` — a copy of system-auth, so it carries both the `pam_sss` double prompt and the 2s `pam_faildelay` this file exists to avoid, and no `pam_u2f` at all. Nothing is shown on screen. A missing file does not lock you out, it degrades you to the old three-Enter behaviour. (Older versions fell back to the `login` service; the destination changed, the trap did not.)
+
+*The file was installed under a session that was already running.* `customPamWatcher` in DMS's `Pam.qml` is a `FileView` with no `watchChanges`, and only `u2fConfigWatcher` is re-read per lock — so whether to use `lockPamPath` is decided **once**, when `dms.service` starts. Install the file into a live session and every check still passes, because the filesystem really is fine, while the lock screen keeps using the fallback until logout. Fix with `systemctl --user restart dms.service`. This only ever bites on the machine where you just discovered the file was missing — i.e. exactly when you most believe you have fixed it.
+
+Which one is live is visible in the journal, and nowhere else:
+
+```
+dms[…]: Starting pam session … with config "dms-fido2" in dir "/etc/pam.d"          # healthy
+dms[…]: Starting pam session … with config "dankshell" in dir "…/state/…/pam"       # degraded
+```
 
 **Idle** is DMS's `IdleService`, seeded to mirror the hypridle timings it replaces (lock at 600s, monitors off 30s later, lock-before-suspend). Timeouts are in **seconds**. `acSuspendTimeout` stays `0` on purpose — idle must never suspend this machine. The one thing not carried over is hypridle's 5-minute `brightnessctl` dim: DMS has no dim stage, and its 5s fade-to-lock is the nearest pre-lock warning.
 
