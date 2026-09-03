@@ -1,0 +1,122 @@
+#!/usr/bin/python3
+"""git-peer -- wire local repos to a peer machine reachable over an ssh alias.
+
+Invoked as `git peer <cmd>` once this file is on PATH.
+
+For each repo it does two independent things:
+  * adds a remote  <alias> -> <alias>:<peer-root>/<name>   (so *we* can push out)
+  * sets receive.denyCurrentBranch=updateInstead           (so *they* can push in,
+    updating our working tree; the push is refused if our tree is dirty)
+"""
+import argparse
+import configparser
+import pathlib
+import subprocess
+import sys
+
+DEFAULT_ROOT = pathlib.Path.home() / "repos"
+CONFIG = pathlib.Path.home() / ".config/git-peer/config.ini"
+
+
+def default_alias():
+    """ssh alias of the peer, from the config chezmoi renders per machine.
+
+    The dotfiles repo is public, so the hostname lives there and not here.
+    """
+    if not CONFIG.exists():
+        return None
+    cp = configparser.ConfigParser()
+    cp.read(CONFIG)
+    host = cp.get("peer", "host", fallback="").strip()
+    return host.split(".")[0] if host else None
+
+
+def git(repo, *args, check=True):
+    r = subprocess.run(["git", "-C", str(repo), *args],
+                       capture_output=True, text=True)
+    if check and r.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} in {repo}: {r.stderr.strip()}")
+    return r.stdout.strip()
+
+
+def discover(root, only):
+    """Top-level git working repos under root, sorted by name."""
+    found = []
+    for path in sorted(root.iterdir()):
+        if not path.is_dir() or (only and path.name not in only):
+            continue
+        if not (path / ".git").exists():          # skips bare repos and non-repos
+            continue
+        found.append(path)
+    return found
+
+
+def cmd_link(args):
+    repos = discover(args.root, set(args.only))
+    if not repos:
+        sys.exit(f"no git repos found under {args.root}")
+    width = max(len(r.name) for r in repos)
+    for repo in repos:
+        url = f"{args.alias}:{args.peer_root}/{repo.name}"
+        existing = git(repo, "remote", "get-url", args.alias, check=False)
+        verb = "unchanged" if existing == url else ("retarget" if existing else "add")
+        if args.dry_run:
+            print(f"  {repo.name:<{width}}  {verb:<9}  {url}")
+            continue
+        if existing:
+            git(repo, "remote", "set-url", args.alias, url)
+        else:
+            git(repo, "remote", "add", args.alias, url)
+        git(repo, "config", "receive.denyCurrentBranch", "updateInstead")
+        print(f"  {repo.name:<{width}}  {verb:<9}  {url}")
+    print(f"\n{len(repos)} repo(s){' (dry run, nothing written)' if args.dry_run else ''}")
+
+
+def cmd_status(args):
+    repos = discover(args.root, set(args.only))
+    if not repos:
+        sys.exit(f"no git repos found under {args.root}")
+    width = max(len(r.name) for r in repos)
+    print(f"  {'REPO':<{width}}  {'PEER REMOTE':<34}  ACCEPTS-PUSH")
+    for repo in repos:
+        url = git(repo, "remote", "get-url", args.alias, check=False) or "-"
+        deny = git(repo, "config", "--get", "receive.denyCurrentBranch",
+                   check=False) or "(default: refuse)"
+        print(f"  {repo.name:<{width}}  {url:<34}  {deny}")
+
+
+def main():
+    p = argparse.ArgumentParser(prog="git peer", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    alias_dflt = default_alias()
+
+    def common(sp):
+        sp.add_argument("alias", nargs="?", default=alias_dflt,
+                        help=f"ssh alias of the peer (default: {alias_dflt})")
+        sp.add_argument("--root", type=pathlib.Path, default=DEFAULT_ROOT,
+                        help=f"local repo dir (default {DEFAULT_ROOT})")
+        sp.add_argument("--only", nargs="*", default=[],
+                        help="limit to these repo names")
+
+    sp = sub.add_parser("link", help="add the peer remote + accept incoming pushes")
+    common(sp)
+    sp.add_argument("--peer-root", default="repos",
+                    help="repo dir on the peer, relative to its home (default: repos)")
+    sp.add_argument("--dry-run", action="store_true")
+    sp.set_defaults(func=cmd_link)
+
+    sp = sub.add_parser("status", help="show peering state per repo")
+    common(sp)
+    sp.set_defaults(func=cmd_status)
+
+    args = p.parse_args()
+    if not args.alias:
+        p.error(f"no peer alias: pass one, or run `chezmoi init` so {CONFIG} "
+                f"gets written")
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

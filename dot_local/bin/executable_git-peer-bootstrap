@@ -1,0 +1,199 @@
+#!/usr/bin/python3
+"""Make this machine a git peer: FIDO2 ssh key + hardened, LAN-only sshd.
+
+Run it in a REAL TERMINAL -- it needs a tty for the sudo password and the
+FIDO2 PIN. Idempotent; safe to re-run.
+
+  first machine:   git-peer-bootstrap --keygen
+  second machine:  git-peer-bootstrap --key-from /path/to/keydir
+
+The peer's hostname and the allowed LAN come from ~/.config/git-peer/config.ini,
+which chezmoi renders per machine; override with --peer-host / --lan.
+
+The private file is a FIDO2 *credential handle*, not a usable key: it signs
+nothing unless the physical stick is plugged in. That is why copying it to
+the second machine is fine.
+"""
+import argparse
+import configparser
+import getpass
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+
+HOME = pathlib.Path.home()
+SSH = HOME / ".ssh"
+KEY = SSH / "id_ecdsa_sk_lan"
+DROPIN = "/etc/ssh/sshd_config.d/60-lan-git-peer.conf"
+CONFIG = HOME / ".config/git-peer/config.ini"
+
+DROPIN_BODY = """# Managed by git-peer-bootstrap. Key-only, non-root, single user.
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+AllowUsers {user}
+X11Forwarding no
+AllowTcpForwarding no
+AllowAgentForwarding no
+"""
+
+
+def peer_defaults():
+    """Read the peer host + LAN CIDR chezmoi rendered for this machine.
+
+    Kept in a config file rather than baked into the script because the
+    dotfiles repo is public and these values describe a private network.
+    """
+    if not CONFIG.exists():
+        return None, None
+    cp = configparser.ConfigParser()
+    cp.read(CONFIG)
+    host = cp.get("peer", "host", fallback="").strip() or None
+    lan = cp.get("peer", "lan", fallback="").strip() or None
+    return host, lan
+
+
+def say(step, msg):
+    print(f"\n\033[1m[{step}]\033[0m {msg}")
+
+
+def run(*cmd, check=True, quiet=False):
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if not quiet and (r.stdout or r.stderr):
+        print("      " + (r.stdout + r.stderr).strip().replace("\n", "\n      "))
+    if check and r.returncode != 0:
+        sys.exit(f"      FAILED: {' '.join(cmd)}")
+    return r
+
+
+def keygen():
+    if KEY.exists():
+        print(f"      {KEY} already exists -- keeping it")
+        return
+    print("      Generating an ECDSA FIDO2 key (ed25519-sk is NOT supported by")
+    print("      the VeriMark Guard). You will be asked for the stick's PIN,")
+    print("      then to touch the fingerprint sensor.")
+    r = subprocess.run(["ssh-keygen", "-t", "ecdsa-sk", "-N", "",
+                        "-C", f"{getpass.getuser()}@{os.uname().nodename} lan-git-peer",
+                        "-f", str(KEY)])
+    if r.returncode != 0:
+        sys.exit("      key generation failed -- is the stick plugged in?")
+
+
+def key_import(src):
+    src = pathlib.Path(src).expanduser()
+    for suffix in ("", ".pub"):
+        s = src / (KEY.name + suffix)
+        if not s.exists():
+            sys.exit(f"      missing {s}")
+        shutil.copyfile(s, KEY.with_name(KEY.name + suffix))
+    KEY.chmod(0o600)
+    print(f"      imported {KEY.name} and {KEY.name}.pub from {src}")
+
+
+def authorize():
+    pub = KEY.with_name(KEY.name + ".pub").read_text().strip()
+    ak = SSH / "authorized_keys"
+    existing = ak.read_text() if ak.exists() else ""
+    marker = pub.split()[1]                     # the base64 blob identifies it
+    if marker in existing:
+        print("      key already authorized")
+    else:
+        with ak.open("a") as fh:
+            fh.write(("" if existing.endswith("\n") or not existing else "\n")
+                     + pub + "\n")
+        print("      appended the public key to authorized_keys")
+    ak.chmod(0o600)
+
+
+def ssh_config(alias, host):
+    cfg = SSH / "config"
+    body = (f"# --- LAN git peer -----------------------------------------------\n"
+            f"# FIDO2 key, not the 1Password agent. ssh takes the FIRST value per\n"
+            f"# keyword, so this block must stay above any 'Host *'.\n"
+            f"Host {alias}\n"
+            f"\tHostName {host}\n"
+            f"\tUser {getpass.getuser()}\n"
+            f"\tIdentityAgent none\n"
+            f"\tIdentityFile {KEY}\n"
+            f"\tIdentitiesOnly yes\n\n")
+    text = cfg.read_text() if cfg.exists() else ""
+    if f"\nHost {alias}\n" in "\n" + text:
+        print(f"      Host {alias} block already present -- left alone")
+        return
+    if cfg.exists():
+        shutil.copyfile(cfg, cfg.with_suffix(".bak"))
+    cfg.write_text(body + text)
+    cfg.chmod(0o600)
+    print(f"      prepended a 'Host {alias}' block to {cfg}")
+
+
+def sshd(lan):
+    user = getpass.getuser()
+    # Prime sudo on the real tty FIRST: run() captures stderr, so a password
+    # prompt from any later sudo call would be invisible and look like a hang.
+    if subprocess.run(["sudo", "-v"]).returncode != 0:
+        sys.exit("      sudo authentication failed")
+    tmp = pathlib.Path("/tmp") / "60-lan-git-peer.conf"
+    tmp.write_text(DROPIN_BODY.format(user=user))
+    run("sudo", "install", "-m", "600", "-o", "root", "-g", "root", str(tmp), DROPIN)
+    tmp.unlink()
+    if run("sudo", "/usr/sbin/sshd", "-t", check=False).returncode != 0:
+        run("sudo", "rm", "-f", DROPIN)
+        sys.exit("      sshd config rejected -- drop-in removed, sshd NOT enabled")
+    run("sudo", "systemctl", "enable", "--now", "sshd")
+    run("sudo", "systemctl", "is-active", "sshd", check=False)
+
+    if lan:
+        zone = run("sudo", "firewall-cmd", "--get-default-zone",
+                   quiet=True).stdout.strip()
+        rule = f"rule family=ipv4 source address={lan} service name=ssh accept"
+        run("sudo", "firewall-cmd", "--permanent", f"--zone={zone}",
+            "--remove-service=ssh", check=False)
+        run("sudo", "firewall-cmd", "--permanent", f"--zone={zone}",
+            f"--add-rich-rule={rule}", check=False)
+        run("sudo", "firewall-cmd", "--reload")
+        print(f"      ssh reachable only from {lan} (zone {zone})")
+
+
+def main():
+    cfg_host, cfg_lan = peer_defaults()
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--peer-host", default=cfg_host,
+                   help=f"peer's DNS name (default from {CONFIG}: {cfg_host})")
+    p.add_argument("--peer", help="ssh alias (default: first label of --peer-host)")
+    p.add_argument("--lan", default=cfg_lan,
+                   help=f"restrict sshd to this CIDR (default: {cfg_lan}); "
+                        "pass '' to leave the firewall alone")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--keygen", action="store_true", help="create the FIDO2 credential")
+    g.add_argument("--key-from", metavar="DIR",
+                   help="import a credential generated on the first machine")
+    args = p.parse_args()
+
+    if not args.peer_host:
+        p.error(f"no peer host: pass --peer-host, or run `chezmoi init` so "
+                f"{CONFIG} gets written")
+    args.peer = args.peer or args.peer_host.split(".")[0]
+
+    SSH.mkdir(mode=0o700, exist_ok=True)
+    say(1, "FIDO2 credential")
+    keygen() if args.keygen else key_import(args.key_from)
+    say(2, "authorize it for incoming ssh")
+    authorize()
+    say(3, f"ssh client alias for '{args.peer}'")
+    ssh_config(args.peer, args.peer_host)
+    say(4, "sshd (sudo password follows)")
+    sshd(args.lan)
+
+    print(f"\n\033[1mDone.\033[0m This machine is {os.uname().nodename}; it now "
+          f"accepts pushes and can reach '{args.peer}'.")
+    print(f"Next: run  git peer link {args.peer}  to wire up ~/repos.")
+
+
+if __name__ == "__main__":
+    main()
