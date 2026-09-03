@@ -9,6 +9,18 @@
 {{- $passwordManager := promptChoiceOnce . "passwordManager" "Password manager" (list "1password" "bitwarden" "none") -}}
 {{- $mailSetup := promptBoolOnce . "mailSetup" "Deploy notmuch + lieer Gmail setup on this machine" false -}}
 
+{{/* LAN git peering: push commits straight to the other machine over ssh.
+     Opt-in per machine, like mailSetup. The two follow-ups are prompted only
+     when it is enabled, but the keys are always emitted so templates and
+     .chezmoiignore can reference them without a missing-key error. */ -}}
+{{- $gitPeerSetup := promptBoolOnce . "gitPeerSetup" "Set up LAN git peering with another machine" false -}}
+{{- $gitPeerHost := "" -}}
+{{- $gitPeerLan := "" -}}
+{{- if $gitPeerSetup -}}
+{{-   $gitPeerHost = promptStringOnce . "gitPeerHost" "  Peer machine's DNS name (the OTHER machine, e.g. box.example.lan)" -}}
+{{-   $gitPeerLan = promptStringOnce . "gitPeerLan" "  LAN CIDR allowed to reach sshd (e.g. 10.0.0.0/24)" -}}
+{{- end -}}
+
 [data]
 name = {{ $name | quote }}
 email = {{ $email | quote }}
@@ -16,3 +28,6 @@ machineClass = {{ $machineClass | quote }}
 machineRole = {{ $machineRole | quote }}
 passwordManager = {{ $passwordManager | quote }}
 mailSetup = {{ $mailSetup }}
+gitPeerSetup = {{ $gitPeerSetup }}
+gitPeerHost = {{ $gitPeerHost | quote }}
+gitPeerLan = {{ $gitPeerLan | quote }}

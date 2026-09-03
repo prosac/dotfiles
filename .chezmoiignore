@@ -32,3 +32,15 @@ bootstrap
 .config/systemd/user/mail-sync.service
 .config/systemd/user/mail-sync.timer
 {{- end }}
+
+{{- /* LAN git peering is opt-in per machine, like the mail stack above.
+       Toggle via the `gitPeerSetup` prompt in .chezmoi.toml.tmpl.
+       `dig` rather than a bare `.gitPeerSetup` so that a config generated
+       before these keys existed still applies instead of erroring on a
+       missing key -- that would otherwise break `chezmoi apply` on every
+       machine until `chezmoi init` had been re-run. */}}
+{{- if not (dig "gitPeerSetup" false .) }}
+.local/bin/git-peer
+.local/bin/git-peer-bootstrap
+.config/git-peer
+{{- end }}
