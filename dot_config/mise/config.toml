@@ -248,11 +248,17 @@ done
 '''
 
 [tasks."bootstrap:pam-dms"]
-description = "Install /etc/pam.d/dms-fido2 (FIDO2 auth stack for the DMS lock screen; asks for sudo)"
+description = "Install /etc/pam.d/dms-fido2 (FIDO2 + optional fingerprint auth stack for the DMS lock screen; asks for sudo)"
 run = '''
 set -e
-src="$(chezmoi source-path)/bootstrap/pam/dms-fido2"
-sudo install -m 644 -o root -g root "$src" /etc/pam.d/dms-fido2
+# Rendered, not copied: the pam_fprintd line is gated on the per-machine
+# `fingerprintReader` flag, so this must go through the template engine the
+# same way bootstrap:dms-session does.
+src="$(chezmoi source-path)/bootstrap/pam/dms-fido2.tmpl"
+rendered="$(mktemp)"
+chezmoi execute-template < "$src" > "$rendered"
+sudo install -m 644 -o root -g root "$rendered" /etc/pam.d/dms-fido2
+rm -f "$rendered"
 echo "Installed: /etc/pam.d/dms-fido2"
 echo "Effective stack:"
 grep -vE '^\s*#|^\s*$' /etc/pam.d/dms-fido2 | sed 's/^/  /'

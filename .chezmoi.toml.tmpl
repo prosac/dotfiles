@@ -13,6 +13,11 @@
      Opt-in per machine, like mailSetup. The two follow-ups are prompted only
      when it is enabled, but the keys are always emitted so templates and
      .chezmoiignore can reference them without a missing-key error. */ -}}
+{{/* Builtin fingerprint reader. Opt-in per machine, like mailSetup: it decides
+     whether pam_fprintd goes into the DMS lock screen's auth stack. Only about
+     a reader wired into THIS machine -- the Kensington VeriMark is a FIDO2 key
+     handled by pam_u2f and is unrelated to this flag. */ -}}
+{{- $fingerprintReader := promptBoolOnce . "fingerprintReader" "Machine has a builtin fingerprint reader (adds pam_fprintd to the DMS lock screen)" false -}}
 {{- $gitPeerSetup := promptBoolOnce . "gitPeerSetup" "Set up LAN git peering with another machine" false -}}
 
 {{- $gitPeerHost := "" -}}
@@ -36,6 +41,7 @@ machineClass = {{ $machineClass | quote }}
 machineRole = {{ $machineRole | quote }}
 passwordManager = {{ $passwordManager | quote }}
 mailSetup = {{ $mailSetup }}
+fingerprintReader = {{ $fingerprintReader }}
 gitPeerSetup = {{ $gitPeerSetup }}
 gitPeerHost = {{ $gitPeerHost | quote }}
 gitPeerLan = {{ $gitPeerLan | quote }}

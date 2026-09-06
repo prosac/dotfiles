@@ -105,10 +105,35 @@
 # use for a brute-force delay: there is no pam_faillock anywhere in this system's
 # stack, and an attacker at the lock screen is not rate-limited by 2s anyway.
 #
-# ORDER: pam_u2f first, so a bare touch unlocks and the key is armed the instant
-# the screen locks. pam_unix is `required` rather than `sufficient` so this stack
-# cannot silently pass, and carries no `nullok` — an empty submission must fail
-# (that failure is what re-arms the key).
+# ORDER: pam_fprintd first, then pam_u2f, then pam_unix. PAM is sequential and
+# both fprintd and u2f BLOCK waiting for their device, so whichever runs first
+# owns the fast path — there is no arrangement that arms both at once.
+#
+# GATED ON `fingerprintReader`, prompted per machine by chezmoi init: the
+# pam_fprintd line is emitted only where a builtin reader actually exists. On a
+# machine without one the module would still load, prompt, find no device and
+# fail through -- costing a pointless delay on every unlock -- so the line is
+# absent there rather than merely unused. The flag is read defensively
+# (`hasKey`) so a chezmoi.toml written before the key existed renders as false
+# instead of erroring.
+#
+# On a machine that HAS one -- yoga has a builtin Goodix MOC reader as well as
+# the VeriMark -- the builtin reader is what gets used in practice, so it goes
+# first. That is a
+# deliberate reversal of the original order, and it does give something up: the
+# key is no longer armed the *instant* the screen locks, only after the
+# fingerprint leg is spent. `max-tries=1` is what keeps that cheap — one verify
+# cycle instead of pam_fprintd's default of three, so an absent finger falls
+# through to the key quickly rather than after three timeouts.
+#
+# The rejected alternative was appending pam_fprintd AFTER pam_u2f, which
+# preserves instant arming but is useless in practice: the u2f leg holds the
+# transaction for the ~31s CTAP device timeout documented above, and the reader
+# does not respond until that lapses.
+#
+# pam_unix is `required` rather than `sufficient` so this stack cannot silently
+# pass, and carries no `nullok` — an empty submission must fail (that failure is
+# what re-arms the key).
 #
 # Nothing is given up relative to the login stack: there is no pam_faillock
 # anywhere in this system's PAM config. The `account` line is defensive, for a
@@ -125,6 +150,9 @@
 # Selected by:  lockPamPath in ~/.config/DankMaterialShell/settings.json
 # See ~/Documents/docs/hyprland-dms-quickshell-session.md
 
+{{ if and (hasKey . "fingerprintReader") .fingerprintReader -}}
+auth        sufficient  pam_fprintd.so max-tries=1
+{{ end -}}
 auth        sufficient  pam_u2f.so cue
 auth        required    pam_unix.so nodelay
 
