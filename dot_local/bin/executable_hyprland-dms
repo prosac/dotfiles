@@ -135,6 +135,15 @@ set -uo pipefail
 MASK_UNITS=(
   waybar.service
   wayland-noti.service
+  # wired.service is the notifier that actually runs on hosts where `noti` was
+  # never cargo-installed -- enable-session-services only enables
+  # wayland-noti.service `if_exists noti`, so on those hosts wayland-noti is
+  # inert and wired owns org.freedesktop.Notifications. Masking only
+  # wayland-noti therefore left DMS losing the bus name to wired, which is what
+  # `check:dms-session` reports as the Type=dbus trap. Mask both; whichever of
+  # the two a host actually runs, DMS wins inside its own session and the
+  # daemon comes back for the default Hyprland and niri sessions.
+  wired.service
   swayosd.service
   polkit-mate-authentication-agent-1.service
   nm-applet.service
