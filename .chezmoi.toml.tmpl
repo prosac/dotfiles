@@ -14,12 +14,20 @@
      when it is enabled, but the keys are always emitted so templates and
      .chezmoiignore can reference them without a missing-key error. */ -}}
 {{- $gitPeerSetup := promptBoolOnce . "gitPeerSetup" "Set up LAN git peering with another machine" false -}}
+
 {{- $gitPeerHost := "" -}}
 {{- $gitPeerLan := "" -}}
 {{- if $gitPeerSetup -}}
 {{-   $gitPeerHost = promptStringOnce . "gitPeerHost" "  Peer machine's DNS name (the OTHER machine, e.g. box.example.lan)" -}}
 {{-   $gitPeerLan = promptStringOnce . "gitPeerLan" "  LAN CIDR allowed to reach sshd (e.g. 10.0.0.0/24)" -}}
 {{- end -}}
+
+{{/* Where this machine keeps its checkouts. sandy mounts repos from here, so
+     it is the one path a workspace profile cannot hardcode and stay portable.
+     Templates read it with `dig` and default to ~/repos, so a machine that has
+     not re-run `chezmoi init` since this key appeared still applies cleanly. */ -}}
+{{- $reposRoot := promptStringOnce . "reposRoot" "Where your git checkouts live (sandy mounts repos from here)" "~/repos" -}}
+{{- $sandyWorkspace := promptStringOnce . "sandyWorkspace" "Default sandy workspace on this machine (blank = the only one there is)" "" -}}
 
 [data]
 name = {{ $name | quote }}
@@ -31,3 +39,5 @@ mailSetup = {{ $mailSetup }}
 gitPeerSetup = {{ $gitPeerSetup }}
 gitPeerHost = {{ $gitPeerHost | quote }}
 gitPeerLan = {{ $gitPeerLan | quote }}
+reposRoot = {{ $reposRoot | quote }}
+sandyWorkspace = {{ $sandyWorkspace | quote }}
