@@ -8,7 +8,7 @@
 #   - GTK settings.ini (gtk-3.0 + gtk-4.0)         -> rewritten below. There is no
 #     settings daemon under Hyprland/niri, so for plain GTK3 apps this file, not
 #     gsettings, decides light vs dark. GtkSettings watches it and re-themes live.
-#   - Hyprland border + tabbed-group colors        -> hyprctl keyword (Hyprland session)
+#   - Hyprland border + tabbed-group colors        -> hyprctl eval (Hyprland session)
 #   - niri border colors                           -> ~/.config/niri/colors.kdl (niri session)
 #   - hyprlock colors                              -> ~/.config/hypr/hyprlock-colors.conf
 #   - Waybar CSS                                   -> ~/.config/waybar/style.css symlink + SIGUSR2
@@ -17,7 +17,7 @@
 #     theme follows the portal, but term-ident's per-session OSC-11 tint overrides
 #     the theme background and does NOT recompute itself, so it must be replayed.
 #
-# Compositor-aware: the hyprctl calls no-op under niri (guarded with `|| true`),
+# Compositor-aware: the hyprctl call no-ops under niri (guarded with `|| true`),
 # and the niri colors.kdl write only fires under niri. The gsettings + GTK +
 # waybar + hyprlock + ghostty paths are identical for both sessions.
 #
@@ -34,20 +34,21 @@ DARK_THEME=Graphite-teal-Dark-nord
 LIGHT_THEME=Graphite-teal-Light-nord
 WAYBAR_SIGNAL=8
 
-# Hyprland border palettes (steel-blue + desaturated teal)
-DARK_ACTIVE='rgba(6b7a99ee) rgba(5c9090ee) 45deg'
-DARK_INACTIVE='rgba(44444488)'
-LIGHT_ACTIVE='rgba(3a4a6bee) rgba(2a6060ee) 45deg'
-LIGHT_INACTIVE='rgba(bbbbbb88)'
+# Hyprland border palettes (steel-blue + desaturated teal), as Lua values for
+# `hyprctl eval` -- hyprland.lua refuses `hyprctl keyword` outright.
+DARK_ACTIVE='{ colors = { "rgba(6b7a99ee)", "rgba(5c9090ee)" }, angle = 45 }'
+DARK_INACTIVE='"rgba(44444488)"'
+LIGHT_ACTIVE='{ colors = { "rgba(3a4a6bee)", "rgba(2a6060ee)" }, angle = 45 }'
+LIGHT_INACTIVE='"rgba(bbbbbb88)"'
 
 # Tabbed-group (groupbar) palettes. Active tab reuses the border gradient;
 # inactive tab is an opaque dim fill; text contrasts the scheme.
 DARK_TAB_ACTIVE="$DARK_ACTIVE"
-DARK_TAB_INACTIVE='rgba(2e3440dd)'
-DARK_TAB_TEXT='rgba(e5e9f0ff)'
+DARK_TAB_INACTIVE='"rgba(2e3440dd)"'
+DARK_TAB_TEXT='"rgba(e5e9f0ff)"'
 LIGHT_TAB_ACTIVE="$LIGHT_ACTIVE"
-LIGHT_TAB_INACTIVE='rgba(d8dee9dd)'
-LIGHT_TAB_TEXT='rgba(2e3440ff)'
+LIGHT_TAB_INACTIVE='"rgba(d8dee9dd)"'
+LIGHT_TAB_TEXT='"rgba(2e3440ff)"'
 
 WAYBAR_DIR="$HOME/.config/waybar"
 
@@ -169,12 +170,22 @@ retint_terminals() {  # $1=dark|light
     "$TERM_IDENT" retint >/dev/null 2>&1 || true
 }
 
+# One `hyprctl eval` for all five colors. Under niri there is no Hyprland to talk
+# to, so the call fails and is ignored. NB the group border (group.col.border_*)
+# follows the window border, as hyprland.lua sets it up.
+set_hypr_colors() {  # $1=active $2=inactive $3=tab active $4=tab inactive $5=tab text
+    hyprctl eval "hl.config({
+        general = { col = { active_border = $1, inactive_border = $2 } },
+        group = {
+            col = { border_active = $1, border_inactive = $2 },
+            groupbar = { col = { active = $3, inactive = $4 }, text_color = $5 },
+        },
+    })" >/dev/null 2>&1 || true
+}
+
 apply_dark() {
-    hyprctl keyword general:col.active_border "$DARK_ACTIVE" >/dev/null 2>&1 || true
-    hyprctl keyword general:col.inactive_border "$DARK_INACTIVE" >/dev/null 2>&1 || true
-    hyprctl keyword group:groupbar:col.active "$DARK_TAB_ACTIVE" >/dev/null 2>&1 || true
-    hyprctl keyword group:groupbar:col.inactive "$DARK_TAB_INACTIVE" >/dev/null 2>&1 || true
-    hyprctl keyword group:groupbar:text_color "$DARK_TAB_TEXT" >/dev/null 2>&1 || true
+    set_hypr_colors "$DARK_ACTIVE" "$DARK_INACTIVE" \
+                    "$DARK_TAB_ACTIVE" "$DARK_TAB_INACTIVE" "$DARK_TAB_TEXT"
     write_niri_colors "$DARK_NIRI_FROM" "$DARK_NIRI_TO" "$DARK_NIRI_INACTIVE"
     write_gtk_settings "$DARK_THEME" 1
     write_hyprlock_colors "$DARK_LOCK_BRIGHT" "$DARK_LOCK_OUTER" "$DARK_LOCK_INNER" \
@@ -184,11 +195,8 @@ apply_dark() {
 }
 
 apply_light() {
-    hyprctl keyword general:col.active_border "$LIGHT_ACTIVE" >/dev/null 2>&1 || true
-    hyprctl keyword general:col.inactive_border "$LIGHT_INACTIVE" >/dev/null 2>&1 || true
-    hyprctl keyword group:groupbar:col.active "$LIGHT_TAB_ACTIVE" >/dev/null 2>&1 || true
-    hyprctl keyword group:groupbar:col.inactive "$LIGHT_TAB_INACTIVE" >/dev/null 2>&1 || true
-    hyprctl keyword group:groupbar:text_color "$LIGHT_TAB_TEXT" >/dev/null 2>&1 || true
+    set_hypr_colors "$LIGHT_ACTIVE" "$LIGHT_INACTIVE" \
+                    "$LIGHT_TAB_ACTIVE" "$LIGHT_TAB_INACTIVE" "$LIGHT_TAB_TEXT"
     write_niri_colors "$LIGHT_NIRI_FROM" "$LIGHT_NIRI_TO" "$LIGHT_NIRI_INACTIVE"
     write_gtk_settings "$LIGHT_THEME" 0
     write_hyprlock_colors "$LIGHT_LOCK_BRIGHT" "$LIGHT_LOCK_OUTER" "$LIGHT_LOCK_INNER" \

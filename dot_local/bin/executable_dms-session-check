@@ -36,7 +36,7 @@ MASKED_UNITS = [
     "awww.service",
     "waypaper.service",
 ]
-ACTIVE_UNITS = ["dms.service", "dms-binds.service", "dms-session-cleanup.service"]
+ACTIVE_UNITS = ["dms.service", "dms-session-cleanup.service"]
 
 GREEN, RED, YELLOW, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[0m"
 if not sys.stdout.isatty():

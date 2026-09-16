@@ -66,7 +66,7 @@
 # LOCKING AND IDLE ARE DMS'S HERE TOO — deliberately not mixed. hypridle is
 # masked below, and nothing then starts hyprlock: hyprlock.service has no
 # [Install] section, so it only ever ran on demand from hypridle's `lock_cmd`.
-# `Super+Escape` still runs `loginctl lock-session` (hyprland.conf is untouched);
+# `Super+Escape` still runs `loginctl lock-session` (unchanged in hyprland.lua);
 # logind's Lock signal now reaches DMS instead, because DMS's
 # loginctlLockIntegration is left at its default of true and there is no second
 # ext-session-lock client to race it.
@@ -100,7 +100,8 @@ set -uo pipefail
 #   polkit-mate-authentication-agent-1  -> DMS Quickshell.Services.Polkit agent
 #   nm-applet                           -> DMS network panel + its own tray
 #   elephant                            -> walker's backend; DMS spotlight
-#                                          replaces walker (see dms-binds)
+#                                          replaces walker (see the DMS block
+#                                          at the end of hyprland.lua)
 #   hypridle                            -> DMS IdleService (and, via it, DMS's
 #                                          own lock screen). Masking this is
 #                                          what stops hyprlock being launched,
@@ -119,7 +120,7 @@ set -uo pipefail
 # so a single press of Super+W would put an unmanaged awww-daemon on the DMS
 # session's output no matter what systemd thinks. That is exactly how this
 # machine ended up with an orphan daemon outside every unit. The mask therefore
-# only holds because ~/.local/bin/dms-binds re-points Super+W at DMS's own
+# only holds because hyprland.lua's DMS-session block re-points Super+W at DMS's own
 # wallpaper browser; the two changes are one change and must not be split.
 #
 # The previous version of this comment said wallpaper was left unmasked because
@@ -145,14 +146,15 @@ MASK_UNITS=(
 
 # dms.service is packaged by the `dms` RPM and is persistently DISABLED (the
 # `bootstrap:dms-session` mise task does that), so it never starts in the
-# default session. dms-binds re-points the launcher keys at DMS inside the
-# running compositor — see ~/.local/bin/dms-binds.
+# default session. The launcher keys are re-pointed at DMS by hyprland.lua
+# itself, gated on DESKTOP_SESSION=hyprland-dms (this session's .desktop name) —
+# that replaced dms-binds.service, whose `hyprctl keyword` rebinds a Lua config
+# refuses.
 # dms-session-cleanup.service must be enabled so that it STARTS with
 # graphical-session.target — a oneshot that never started can never have its
 # ExecStop= run, so an unstarted unit is not a safety net.
 ENABLE_UNITS=(
   dms.service
-  dms-binds.service
   dms-session-cleanup.service
 )
 

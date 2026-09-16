@@ -90,7 +90,7 @@ non-btrfs machine requires disabling nothing.
 
 ## Sessions
 
-Three session entries land at the greeter, all sharing one `hyprland.conf`:
+Three session entries land at the greeter, all sharing one `hyprland.lua`:
 
 - **Hyprland** — the default: waybar, walker, swayosd, hypridle + hyprlock.
 - **niri** — scrollable tiling, sharing the same daemons via `ConditionEnvironment=` gates.

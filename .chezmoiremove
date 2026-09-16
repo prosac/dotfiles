@@ -9,3 +9,14 @@
 # backend. Disable it before the rename lands, or the stale
 # graphical-session.target.wants/ symlink outlives the file it points at.
 .config/systemd/user/swww.service
+
+# hyprland.conf -> hyprland.lua (2026-09-16): DMS 1.6 only writes Lua fragments.
+# dms-binds re-pointed the DMS session's launcher keys with `hyprctl keyword`,
+# which a Lua config refuses; hyprland.lua does it natively now. The unit is only
+# ever runtime-enabled by hyprland-dms, so no .wants/ symlink outlives it.
+# hyprland.conf and workspaces.conf are deliberately NOT removed here: Hyprland
+# ignores them while hyprland.lua exists. They are NOT a working fallback on
+# their own, though -- the scripts now speak `hyprctl eval` -- so rolling back
+# means reverting the commit, not renaming a file.
+.config/systemd/user/dms-binds.service
+.local/bin/dms-binds

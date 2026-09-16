@@ -29,7 +29,7 @@ and hypridle are not mixed in — hypridle is runtime-masked by
 ~/.local/bin/hyprland-dms, and nothing starts hyprlock (hyprlock.service has no
 [Install] section, so it only ever ran on demand from hypridle's lock_cmd).
 `loginctlLockIntegration` is therefore left at its default of TRUE, which is
-what makes Super+Escape (`loginctl lock-session`, unchanged in hyprland.conf)
+what makes Super+Escape (`loginctl lock-session`, unchanged in hyprland.lua)
 reach DMS's lock screen. There is no second ext-session-lock client to race.
 
 1. LOCK AUTHENTICATION — the FIDO2 stick, armed immediately.
@@ -73,7 +73,7 @@ reach DMS's lock screen. There is no second ext-session-lock client to race.
    is deliberate: on 2026-08-12 an unattended timed hibernate wedged inside a
    closed backpack and cooked the machine for 44 minutes. Suspending is a
    deliberate act here, never a timer. See the Super+CTRL+Escape comment in
-   hyprland.conf.
+   hyprland.lua.
 
    NOT carried over: hypridle's 300s `brightnessctl -s set 10%` dim step. DMS's
    IdleService has no brightness-dim stage, so that is genuinely lost. Its

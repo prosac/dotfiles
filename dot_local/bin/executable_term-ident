@@ -140,7 +140,10 @@ def _setprop(addr: str, **props: object) -> None:
     Prop names are the Hyprland >=0.56 snake_case ones (0.55 and earlier used
     activebordercolor / alpha / alphainactive — no aliases exist either way)."""
     for prop, val in props.items():
-        run("hyprctl", "dispatch", "setprop", f"address:{addr}", prop, str(val))
+        # Lua dispatcher syntax: hyprland.lua rejects the old `dispatch setprop` form.
+        v = val if isinstance(val, (int, float)) else f'"{val}"'
+        run("hyprctl", "dispatch",
+            f'hl.dsp.window.set_prop({{ window = "address:{addr}", prop = "{prop}", value = {v} }})')
 
 
 def apply_window(active: str, inactive: str, pid: int | None = None) -> None:
