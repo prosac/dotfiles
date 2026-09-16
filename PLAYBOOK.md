@@ -33,7 +33,7 @@ If you're not sure which side has the latest, run `chezmoi diff` first — it sh
 
 ### Day-to-day
 
-1. Edit live config directly (e.g. `~/.config/hypr/hyprland.conf`).
+1. Edit live config directly (e.g. `~/.config/hypr/hyprland.lua`).
 2. `mise run ch:status` — see what drifted.
 3. `mise run ch:diff` — review the delta.
 4. `mise run ch:readd` — capture into source.
@@ -232,9 +232,9 @@ Verify a running session with `mise run check:dms-session`.
 
 ⚠️ **This breaks if lingering is ever enabled** (`loginctl enable-linger`, e.g. for rootless k3s): a user manager that outlives logout keeps `waybar.service` masked, and the *default* session then starts with no bar.
 
-**Launcher/panel keys** are re-pointed at DMS by `dms-binds.service` → `~/.local/bin/dms-binds`, which runs `hyprctl keyword unbind/bind` inside the running compositor — so `hyprland.conf` is not edited and the default session's config *and code path* stay byte-identical. Super+D / Super+Space → DMS spotlight; plus Super+N notifications, Super+A control-center, Super+X powermenu, Super+Shift+V clipboard, Super+/ keybind cheatsheet. It refuses to run unless `dms.service` is active.
+**Launcher/panel keys** are re-pointed at DMS by the `if dms_session` block at the end of `~/.config/hypr/hyprland.lua`, gated on `DESKTOP_SESSION=hyprland-dms` — the default session never evaluates it. The same block loads DMS's own fragments from `~/.config/hypr/dms/` (outputs, layout, cursor, window rules, and `binds-user.lua` from DMS's keybind editor), which is what makes those DMS Settings pages editable. Super+D / Super+Space → DMS spotlight; plus Super+N notifications, Super+A control-center, Super+X powermenu, Super+Shift+V clipboard, Super+/ keybind cheatsheet.
 
-**Locking, and the FIDO2 stick.** `Super+Escape` still runs `loginctl lock-session` (hyprland.conf is untouched); logind's `Lock` signal now reaches DMS, which owns the lock screen here. The stick still unlocks with a **bare touch, no extra keypress**: rather than DMS's native security-key mode — where the key is a separate factor you start on demand with the passkey button — DMS is pointed at `/etc/pam.d/dms-fido2` as its *primary* PAM stack (`pam_u2f sufficient` + `pam_unix required`, the same effective stack as `hyprlock-fido2`). `lockPamInlineU2f` tells DMS that stack already provides the key, so it suppresses its own factor UI and the key is armed the instant the screen locks.
+**Locking, and the FIDO2 stick.** `Super+Escape` still runs `loginctl lock-session` (unchanged in hyprland.lua); logind's `Lock` signal now reaches DMS, which owns the lock screen here. The stick still unlocks with a **bare touch, no extra keypress**: rather than DMS's native security-key mode — where the key is a separate factor you start on demand with the passkey button — DMS is pointed at `/etc/pam.d/dms-fido2` as its *primary* PAM stack (`pam_u2f sufficient` + `pam_unix required`, the same effective stack as `hyprlock-fido2`). `lockPamInlineU2f` tells DMS that stack already provides the key, so it suppresses its own factor UI and the key is armed the instant the screen locks.
 
 ```sh
 mise run bootstrap:pam-dms            # installs /etc/pam.d/dms-fido2 and asserts it is readable

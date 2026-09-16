@@ -103,7 +103,12 @@ IDLE_ALPHA_INACTIVE = 0.72
 # Prop names are the Hyprland >=0.56 snake_case ones (0.55 and earlier used
 # activebordercolor / alpha / alphainactive — no aliases exist either way).
 def setprops(addr, props)
-  props.each { |prop, val| run("hyprctl", "dispatch", "setprop", "address:#{addr}", prop, val.to_s) }
+  # Lua dispatcher syntax: hyprland.lua rejects the old `dispatch setprop` form.
+  props.each do |prop, val|
+    v = val.is_a?(Numeric) ? val : %("#{val}")
+    run("hyprctl", "dispatch",
+        %(hl.dsp.window.set_prop({ window = "address:#{addr}", prop = "#{prop}", value = #{v} })))
+  end
 end
 
 # In a project: colored border + fully opaque (opacity explicitly 1).

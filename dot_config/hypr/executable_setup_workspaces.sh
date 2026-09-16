@@ -39,20 +39,29 @@ fi
 
 # 1) Set rules. default:true on ws1, persistent:true on the always-visible six
 #    so they materialize even when empty.
+#
+#    Under hyprland.lua `hyprctl keyword` is refused ("keyword can't work with
+#    non-legacy parsers"), so rules go through `hyprctl eval`. Re-issuing
+#    hl.workspace_rule for the same workspace merges into the existing rule, so
+#    running this on every hotplug does not accumulate duplicates.
 for ws in 1 2 3 4 5 6 7 8 9 10; do
-    rule="monitor:${WS_MONITOR[$ws]}"
-    [[ $ws -eq 1 ]] && rule="$rule,default:true"
-    [[ $ws -le 6 ]] && rule="$rule,persistent:true"
-    hyprctl keyword workspace "$ws,$rule" >/dev/null
+    rule="workspace = \"$ws\", monitor = \"${WS_MONITOR[$ws]}\""
+    [[ $ws -eq 1 ]] && rule="$rule, default = true"
+    [[ $ws -le 6 ]] && rule="$rule, persistent = true"
+    hyprctl eval "hl.workspace_rule({ $rule })" >/dev/null
 done
 
 # 2) Rename — must come AFTER persistent:true has materialized the workspaces.
-hyprctl dispatch renameworkspace 1 "1:Web"  >/dev/null
-hyprctl dispatch renameworkspace 2 "2:Code" >/dev/null
-hyprctl dispatch renameworkspace 3 "3:Term" >/dev/null
-hyprctl dispatch renameworkspace 4 "4:Term" >/dev/null
-hyprctl dispatch renameworkspace 5 "5:All The Things" >/dev/null
-hyprctl dispatch renameworkspace 6 "6:Aux"  >/dev/null
+#    `hyprctl dispatch` takes a Lua dispatcher expression under hyprland.lua.
+rename() {  # $1=id $2=name
+    hyprctl dispatch "hl.dsp.workspace.rename({ workspace = $1, name = \"$2\" })" >/dev/null
+}
+rename 1 "1:Web"
+rename 2 "2:Code"
+rename 3 "3:Term"
+rename 4 "4:Term"
+rename 5 "5:All The Things"
+rename 6 "6:Aux"
 
 # 3) Migrate any already-existing workspaces sitting on the wrong monitor.
 #    Rules only affect newly-created workspaces — without this, hotplug leaves
@@ -61,7 +70,7 @@ for ws in 1 2 3 4 5 6 7 8 9 10; do
     target="${WS_MONITOR[$ws]}"
     current=$(hyprctl workspaces -j | jq -r --argjson id "$ws" '.[] | select(.id == $id) | .monitor')
     if [[ -n "$current" && "$current" != "$target" ]]; then
-        hyprctl dispatch moveworkspacetomonitor "$ws" "$target" >/dev/null
+        hyprctl dispatch "hl.dsp.workspace.move({ workspace = $ws, monitor = \"$target\" })" >/dev/null
     fi
 done
 
