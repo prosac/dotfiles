@@ -30,6 +30,8 @@ Usage:
                               status: done + closed: today; --note replaces `next:` with where
                               the knowledge now lives
     handover open <k>         reverse of done
+    handover next <k> "TEXT"  rewrite the next action — for a `next:` that has gone stale or
+                              wrong, without closing the doc
     handover untrack <k>      strip the handover keys from a doc that *is* the durable record
     handover rm <k> [--note TEXT] [--force]
                               delete a closed doc and its ripple — guarded; see `rm` below
@@ -151,8 +153,21 @@ def read_front_matter(path: Path) -> dict[str, str | list[str]]:
 def _parse_value(value: str) -> str | list[str]:
     if value.startswith(("'", '"')):
         quote = value[0]
-        end = value.find(quote, 1)
-        return value[1:end] if end > 0 else value[1:]
+        # Walk it rather than `find`: a double-quoted scalar may contain \" and \\, and stopping at
+        # the first bare quote would silently truncate the value at the escape.
+        out: list[str] = []
+        index = 1
+        while index < len(value):
+            char = value[index]
+            if quote == '"' and char == "\\" and index + 1 < len(value):
+                out.append(value[index + 1])
+                index += 2
+                continue
+            if char == quote:
+                break
+            out.append(char)
+            index += 1
+        return "".join(out)
     # An unquoted value may carry a trailing comment (`publish: false   # flip to true …`).
     value = value.split(" #", 1)[0].strip()
     if value.startswith("[") and value.endswith("]"):
@@ -234,6 +249,16 @@ def render(items: list[Handover], style: Style, width: int) -> str:
 # (`publish`, `parent`, `tags`) and drop the `# comments` that carry the Confluence page ids.
 
 
+def _quote(value: str) -> str:
+    """A YAML double-quoted scalar. Escapes, rather than trusting the value not to contain a quote.
+
+    Closing notes and next actions are free text written by a human or an agent; one containing a
+    `"` would otherwise end the scalar early and leave the file unparseable — silently, because
+    this tool's own reader is forgiving.
+    """
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def edit_front_matter(
     path: Path,
     *,
@@ -260,11 +285,11 @@ def edit_front_matter(
         if key in drop:
             continue
         if key in assign:
-            kept.append(f'{key}: "{assign.pop(key)}"\n')
+            kept.append(f"{key}: {_quote(assign.pop(key))}\n")
             continue
         kept.append(line)
     # Whatever is left is new: append in a stable order so diffs stay readable.
-    kept.extend(f'{key}: "{value}"\n' for key, value in assign.items())
+    kept.extend(f"{key}: {_quote(value)}\n" for key, value in assign.items())
     path.write_text("".join([lines[0], *kept, *lines[end:]]), encoding="utf-8")
 
 
@@ -310,6 +335,22 @@ def cmd_done(item: Handover, note: str | None) -> int:
     print(f"closed {item.path.stem} ({_today()})")
     if not note:
         print("  no closing note — `--note \"<where the knowledge lives>\"` is what makes `rm` safe later")
+    return 0
+
+
+def cmd_next(item: Handover, text: str) -> int:
+    """Correct the next action without closing the doc.
+
+    A `next:` goes stale, and sometimes goes *wrong* — one told a reader to tag a release months
+    after we settled that we never tag. Rewriting it is real work, so it gets a verb rather than a
+    hand-edit of the frontmatter this tool exists to own.
+    """
+    previous = item.next_action
+    edit_front_matter(item.path, assign={"next": text, "updated": _today()})
+    print(f"{item.path.stem}: next updated")
+    if previous:
+        print(f"  was: {previous[:100]}{'…' if len(previous) > 100 else ''}")
+    print(f"  now: {text[:100]}{'…' if len(text) > 100 else ''}")
     return 0
 
 
@@ -550,7 +591,7 @@ def cmd_json(items: list[Handover]) -> int:
     return 0
 
 
-_VERBS = ("path", "done", "open", "untrack", "rm", "lint")
+_VERBS = ("path", "done", "open", "next", "untrack", "rm", "lint")
 
 
 def _verb_parser() -> argparse.ArgumentParser:
@@ -559,6 +600,9 @@ def _verb_parser() -> argparse.ArgumentParser:
     sub.add_parser("lint")
     for verb in ("path", "open", "untrack"):
         sub.add_parser(verb).add_argument("key")
+    p_next = sub.add_parser("next")
+    p_next.add_argument("key")
+    p_next.add_argument("text", help="the new next action, in quotes")
     for verb in ("done", "rm"):
         p = sub.add_parser(verb)
         p.add_argument("key")
@@ -585,6 +629,8 @@ def _run_verb(args: argparse.Namespace) -> int:
             return cmd_done(item, args.note)
         case "open":
             return cmd_open(item)
+        case "next":
+            return cmd_next(item, args.text)
         case "untrack":
             return cmd_untrack(item)
         case "rm":
