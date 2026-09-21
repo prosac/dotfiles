@@ -23,14 +23,32 @@ Usage:
                           Cannot fail: any error exits 0 with no output, because a broken helper
                           must never be the reason a terminal comes up wrong.
     handover --all        include the ones marked done
+    handover --json       the tracked set as JSON (with paths) — for tooling, not for reading
+
+    handover path <k>         print one doc's absolute path and nothing else
+    handover done <k> [--note TEXT]
+                              status: done + closed: today; --note replaces `next:` with where
+                              the knowledge now lives
+    handover open <k>         reverse of done
+    handover untrack <k>      strip the handover keys from a doc that *is* the durable record
+    handover rm <k> [--note TEXT] [--force]
+                              delete a closed doc and its ripple — guarded; see `rm` below
+    handover lint             the checks that nag instead of acting
+
+<k> is an index from the current listing **or** a filename stem. Prefer the stem in scripts: an
+index shifts the moment something is closed.
 
 Stdlib only and no network on purpose: this runs before the first prompt.
 """
 
 from __future__ import annotations
 
+import argparse
 import datetime
+import json
 import os
+import shutil
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -41,6 +59,19 @@ DOCS_DIR = Path(os.environ.get("HANDOVER_DOCS_DIR", "~/Documents/docs")).expandu
 # `---` and never closes it from being read to the end.
 _MAX_FRONT_MATTER_LINES = 80
 _OPEN, _DONE = "open", "done"
+#: Overridable so the tests can run against a throwaway tree instead of the real one.
+INDEX_FILE = Path(os.environ.get("HANDOVER_INDEX_FILE", "~/CLAUDE.md")).expanduser()
+_DEFAULT_SNAP_DIR = Path("/home/.snapshots/hourly")
+SNAP_DIR = Path(os.environ.get("HANDOVER_SNAPDIR", _DEFAULT_SNAP_DIR))
+LEDGER = DOCS_DIR / "handover-log.md"
+#: The keys this tool owns. `untrack` removes exactly these and leaves everything else alone.
+_HANDOVER_KEYS = ("status", "tickets", "next", "short", "closed")
+#: Where a reference to a deleted doc is likely to hide. Reported, never auto-edited.
+_REFERENCE_DIRS = (
+    DOCS_DIR,
+    Path("~/.claude/projects/-home-jo/memory").expanduser(),
+    Path("~/.claude/plans").expanduser(),
+)
 
 
 # --- rendering ------------------------------------------------------------------------------------
@@ -198,18 +229,384 @@ def render(items: list[Handover], style: Style, width: int) -> str:
     return "\n".join(lines)
 
 
+# --- editing --------------------------------------------------------------------------------------
+# Line-based on purpose. Re-serialising the block would reformat keys this tool does not own
+# (`publish`, `parent`, `tags`) and drop the `# comments` that carry the Confluence page ids.
+
+
+def edit_front_matter(
+    path: Path,
+    *,
+    assign: dict[str, str] | None = None,
+    drop: tuple[str, ...] = (),
+) -> None:
+    """Set and/or remove frontmatter keys, touching only lines inside the opening block."""
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    if not lines or lines[0].rstrip("\n") != "---":
+        raise ValueError(f"{path.name}: no frontmatter to edit")
+    try:
+        end = next(
+            i
+            for i in range(1, min(len(lines), _MAX_FRONT_MATTER_LINES + 1))
+            if lines[i].rstrip("\n") in ("---", "...")
+        )
+    except StopIteration:
+        raise ValueError(f"{path.name}: frontmatter never closes") from None
+
+    assign = dict(assign or {})
+    kept: list[str] = []
+    for line in lines[1:end]:
+        key = line.partition(":")[0].strip() if ":" in line and not line[:1].isspace() else None
+        if key in drop:
+            continue
+        if key in assign:
+            kept.append(f'{key}: "{assign.pop(key)}"\n')
+            continue
+        kept.append(line)
+    # Whatever is left is new: append in a stable order so diffs stay readable.
+    kept.extend(f'{key}: "{value}"\n' for key, value in assign.items())
+    path.write_text("".join([lines[0], *kept, *lines[end:]]), encoding="utf-8")
+
+
+def resolve(key: str, items: list[Handover]) -> Handover:
+    """A listing index or a filename stem. The stem is the stable one."""
+    if key.isdigit():
+        index = int(key)
+        if 1 <= index <= len(items):
+            return items[index - 1]
+        raise KeyError(f"no such entry {key!r} (1\u2013{len(items)})")
+    matches = [item for item in items if item.path.stem == key]
+    if not matches:
+        matches = [item for item in items if key in item.path.stem]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise KeyError(f"no handover matching {key!r}")
+    raise KeyError(f"{key!r} matches {len(matches)}: " + ", ".join(m.path.stem for m in matches))
+
+
+def _today() -> str:
+    return datetime.date.today().isoformat()
+
+
 def open_in_editor(item: Handover) -> int:
     editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "less"
     return os.spawnvp(os.P_WAIT, editor.split()[0], [*editor.split(), str(item.path)])
 
 
+# --- verbs ----------------------------------------------------------------------------------------
+
+
+def cmd_path(item: Handover) -> int:
+    print(item.path)
+    return 0
+
+
+def cmd_done(item: Handover, note: str | None) -> int:
+    assign = {"status": _DONE, "closed": _today(), "updated": _today()}
+    if note:
+        assign["next"] = note
+    edit_front_matter(item.path, assign=assign)
+    print(f"closed {item.path.stem} ({_today()})")
+    if not note:
+        print("  no closing note — `--note \"<where the knowledge lives>\"` is what makes `rm` safe later")
+    return 0
+
+
+def cmd_open(item: Handover) -> int:
+    edit_front_matter(item.path, assign={"status": _OPEN, "updated": _today()}, drop=("closed",))
+    print(f"reopened {item.path.stem}")
+    return 0
+
+
+def cmd_untrack(item: Handover) -> int:
+    """For a doc that *is* the durable record — it keeps living, just not as a handover."""
+    fields = read_front_matter(item.path)
+    edit_front_matter(item.path, drop=_HANDOVER_KEYS)
+    _drop_empty_front_matter(item.path)
+    print(f"untracked {item.path.stem} — still a reference doc, no longer a handover")
+    if str(fields.get("publish", "")).lower() == "true":
+        page = _page_id(item.path)
+        print(
+            f"  ⚠️  still publish: true"
+            + (f" → Confluence page {page}" if page else "")
+            + "; if that page was deleted, publishing would recreate it — verify before the next publish"
+        )
+    if "handover" in item.path.stem:
+        print("  note: the filename still says handover; renaming ripples into the index and the page title")
+    return 0
+
+
+def _drop_empty_front_matter(path: Path) -> None:
+    """Remove the delimiters when untracking emptied the block — a bare `---\n---` is noise."""
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    if len(lines) < 2 or lines[0].rstrip("\n") != "---":
+        return
+    if lines[1].rstrip("\n") not in ("---", "..."):
+        return
+    rest = lines[2:]
+    while rest and not rest[0].strip():
+        rest.pop(0)
+    path.write_text("".join(rest), encoding="utf-8")
+
+
+def _page_id(path: Path) -> str | None:
+    head = path.read_text(encoding="utf-8", errors="replace")[:4000]
+    marker = "confluence-page-id:"
+    if marker not in head:
+        return None
+    return head.split(marker, 1)[1].split("-->")[0].strip() or None
+
+
+def _snapshot_taken_at(directory: Path) -> float:
+    """When the snapshot was taken, from its ``YYYY-MM-DD-HHMM`` name.
+
+    ⚠️ Not the mtime: a btrfs snapshot inherits the *source subvolume's* mtime, so every snapshot
+    under `/home/.snapshots/hourly` reports the same ancient timestamp and an mtime comparison
+    would reject every delete. The name is the only honest clock here; mtime is the fallback for a
+    directory that is not named this way.
+    """
+    try:
+        return datetime.datetime.strptime(directory.name, "%Y-%m-%d-%H%M").timestamp()
+    except ValueError:
+        return directory.stat().st_mtime
+
+
+def _newest_snapshot() -> Path | None:
+    if not SNAP_DIR.is_dir():
+        return None
+    dirs = [d for d in SNAP_DIR.iterdir() if d.is_dir()]
+    return max(dirs, key=_snapshot_taken_at) if dirs else None
+
+
+def _fresh_snapshot(path: Path) -> Path | None:
+    """A snapshot taken after the file was last written — the only undo `rm` has."""
+    if not SNAP_DIR.is_dir():
+        return None
+    mtime = path.stat().st_mtime
+    newer = [d for d in SNAP_DIR.iterdir() if d.is_dir() and _snapshot_taken_at(d) > mtime]
+    return max(newer, key=_snapshot_taken_at) if newer else None
+
+
+def _drop_index_line(stem: str) -> str:
+    """Remove the one `~/CLAUDE.md` bullet for this doc. Matches the path, not the prose."""
+    if not INDEX_FILE.exists():
+        return "index file not found"
+    needle = f"`~/Documents/docs/{stem}.md`"
+    lines = INDEX_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
+    hits = [i for i, line in enumerate(lines) if needle in line]
+    if not hits:
+        return "not indexed"
+    if len(hits) > 1:
+        return f"{len(hits)} index lines mention it — left alone, remove by hand"
+    del lines[hits[0]]
+    INDEX_FILE.write_text("".join(lines), encoding="utf-8")
+    return "index bullet removed"
+
+
+def _referencing_files(stem: str, deleted: Path) -> list[Path]:
+    needle = f"{stem}.md"
+    found: list[Path] = []
+    for root in _REFERENCE_DIRS:
+        if not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*.md")):
+            if path == deleted:
+                continue
+            try:
+                if needle in path.read_text(encoding="utf-8", errors="replace"):
+                    found.append(path)
+            except OSError:
+                continue
+    return found
+
+
+def _append_ledger(stem: str, note: str, snapshot: Path | None) -> None:
+    if not LEDGER.exists():
+        LEDGER.write_text(
+            "---\npublish: false\n---\n\n# Handover log\n\n"
+            "Every handover doc `handover rm` has deleted, and where its knowledge went. This is the\n"
+            "record that makes deleting safe: the doc is gone, the answer to \"where did that go\" is not.\n\n"
+            "| date | doc | where the knowledge lives now | snapshot |\n|---|---|---|---|\n",
+            encoding="utf-8",
+        )
+    with LEDGER.open("a", encoding="utf-8") as handle:
+        handle.write(f"| {_today()} | `{stem}.md` | {note or '—'} | `{snapshot.name if snapshot else '—'}` |\n")
+
+
+def cmd_rm(item: Handover, note: str | None, force: bool) -> int:
+    stem = item.path.stem
+    if item.status != _DONE and not force:
+        print(f"handover: {stem} is not closed — `handover done {stem}` first", file=sys.stderr)
+        return 2
+    page = _page_id(item.path)
+    fields = read_front_matter(item.path)
+    if page and str(fields.get("publish", "")).lower() == "true" and not force:
+        print(
+            f"handover: {stem} is the docs-as-code source of live page {page}.\n"
+            "  Deleting it orphans that page. `handover untrack` keeps the doc; --force overrides.",
+            file=sys.stderr,
+        )
+        return 2
+
+    snapshot = _fresh_snapshot(item.path)
+    if snapshot is None:
+        # Only for the real snapshot dir: `dotsnap` writes to its own fixed location, so running it
+        # for an overridden SNAP_DIR would snapshot the live system and still not help.
+        if SNAP_DIR == _DEFAULT_SNAP_DIR and shutil.which("dotsnap"):
+            print("taking a snapshot first (dotsnap)…")
+            subprocess.run(["dotsnap"], check=False)
+            # Trust the one we just took rather than re-comparing: snapshot names carry only
+            # minute precision, so a file written at 14:34:30 looks *newer* than the snapshot
+            # named 14:34 that demonstrably contains it. We took it after the last write.
+            snapshot = _newest_snapshot()
+        if snapshot is None:
+            print(
+                "handover: no snapshot newer than the file — this delete would have no undo.\n"
+                "  Run `mise run dots:snap`, then retry.",
+                file=sys.stderr,
+            )
+            return 2
+
+    references = _referencing_files(stem, item.path)
+    item.path.unlink()
+    print(f"deleted {stem}.md")
+    print(f"  {_drop_index_line(stem)}")
+    _append_ledger(stem, note or "", snapshot)
+    print(f"  ledger row written ({LEDGER.name}), undo snapshot {snapshot.name}")
+    if references:
+        print(f"  ⚠️  {len(references)} file(s) still reference it — repoint by hand, they need judgment:")
+        for path in references:
+            print(f"       {path}")
+    if page:
+        print(f"  ⚠️  it published to Confluence page {page}; that page is now sourceless")
+    return 0
+
+
+def cmd_lint() -> int:
+    """Nag, never act. Everything here is a judgment the tool must not make on its own."""
+    problems = 0
+    today = datetime.date.today()
+    tracked: list[Path] = []
+    for path in sorted(DOCS_DIR.rglob("*.md")):
+        fields = read_front_matter(path)
+        if not any(key in fields for key in _HANDOVER_KEYS):
+            continue
+        tracked.append(path)
+        status = str(fields.get("status", "")).lower()
+        if status not in (_OPEN, _DONE):
+            print(f"unknown status {status or '(none)'!r:12} {path.name}")
+            print("    only open/done exist — anything else is silently invisible")
+            problems += 1
+            continue
+        if status == _DONE and not fields.get("closed"):
+            print(f"done, no closed:      {path.name}")
+            print("    age checks cannot see it — re-run `handover done` to stamp it")
+            problems += 1
+    index_text = INDEX_FILE.read_text(encoding="utf-8") if INDEX_FILE.exists() else ""
+    for path in tracked:
+        if f"`~/Documents/docs/{path.name}`" not in index_text:
+            print(f"not in the index      {path.name}")
+            problems += 1
+    for item in collect(include_done=True):
+        fields = read_front_matter(item.path)
+        closed = fields.get("closed")
+        if item.status == _DONE and isinstance(closed, str) and closed:
+            try:
+                age = (today - datetime.date.fromisoformat(closed)).days
+            except ValueError:
+                continue
+            if age > 14:
+                print(f"closed {age}d ago        {item.path.name}")
+                print("    rm it (knowledge has a home) or untrack it (it IS the home)")
+                problems += 1
+        elif item.status == _OPEN and (time.time() - item.touched) > 30 * 86_400:
+            print(f"open, untouched 30d+  {item.path.name}")
+            print(f"    is the next: still true? → {item.next_action[:90] or '(none)'}")
+            problems += 1
+    print(f"\n{problems} thing(s) to decide" if problems else "nothing to decide")
+    return 0
+
+
+def cmd_json(items: list[Handover]) -> int:
+    print(
+        json.dumps(
+            [
+                {
+                    "index": i,
+                    "path": str(item.path),
+                    "stem": item.path.stem,
+                    "short": item.title,
+                    "status": item.status,
+                    "next": item.next_action,
+                    "tickets": list(item.tickets),
+                    "age": item.age,
+                }
+                for i, item in enumerate(items, start=1)
+            ],
+            indent=2,
+        )
+    )
+    return 0
+
+
+_VERBS = ("path", "done", "open", "untrack", "rm", "lint")
+
+
+def _verb_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="handover", add_help=True)
+    sub = parser.add_subparsers(dest="verb", required=True)
+    sub.add_parser("lint")
+    for verb in ("path", "open", "untrack"):
+        sub.add_parser(verb).add_argument("key")
+    for verb in ("done", "rm"):
+        p = sub.add_parser(verb)
+        p.add_argument("key")
+        p.add_argument("--note", default=None)
+        if verb == "rm":
+            p.add_argument("--force", action="store_true")
+    return parser
+
+
+def _run_verb(args: argparse.Namespace) -> int:
+    if args.verb == "lint":
+        return cmd_lint()
+    # Verbs act on any tracked doc, closed ones included — that is the set they exist for.
+    items = collect(include_done=True)
+    try:
+        item = resolve(args.key, items)
+    except KeyError as exc:
+        print(f"handover: {exc}", file=sys.stderr)
+        return 2
+    match args.verb:
+        case "path":
+            return cmd_path(item)
+        case "done":
+            return cmd_done(item, args.note)
+        case "open":
+            return cmd_open(item)
+        case "untrack":
+            return cmd_untrack(item)
+        case "rm":
+            return cmd_rm(item, args.note, args.force)
+    return 2
+
+
 def main(argv: list[str]) -> int:
     args = argv[1:]
+    # A verb in first position is the new surface; anything else stays exactly as it was, because
+    # the zshrc MOTD call and the muscle-memory `handover 3` must not change.
+    if args and args[0] in _VERBS:
+        return _run_verb(_verb_parser().parse_args(args))
+
     motd = "--motd" in args
-    include_done = "--all" in args
+    include_done = "--all" in args or "--json" in args
+    as_json = "--json" in args
     positional = [arg for arg in args if not arg.startswith("-")]
 
     items = collect(include_done=include_done)
+    if as_json:
+        return cmd_json(items)
     if not items:
         if motd:
             return 0

@@ -13,3 +13,10 @@ repos:
         entry: gitleaks git --staged --verbose --redact
         language: system
         pass_filenames: false
+      - id: handover-tests
+        name: handover (script tests)
+        description: The handover tool edits frontmatter and deletes docs; its guards need tests.
+        entry: python3 tests/test_handover.py
+        language: system
+        pass_filenames: false
+        files: '^(dot_local/bin/executable_handover|tests/test_handover\.py)$'

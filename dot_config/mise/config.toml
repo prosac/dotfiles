@@ -11,6 +11,11 @@
 [env]
 GOBIN = "{{env.HOME}}/.local/go/bin"
 
+[tasks."ch:test"]
+description = "Run the tests for the scripts in the chezmoi source (handover, …)"
+dir = "{{env.HOME}}/.local/share/chezmoi"
+run = "python3 tests/test_handover.py"
+
 [tasks."ch:status"]
 description = "Show chezmoi drift (source vs target)"
 run = "chezmoi status"
