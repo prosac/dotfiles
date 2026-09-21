@@ -103,6 +103,14 @@ class EditFrontMatter(HandoverCase):
         self.assertEqual(fields["closed"], "2026-01-02")
         self.assertNotIn("next", fields)
 
+    def test_a_value_containing_a_quote_stays_parseable(self):
+        """Notes are free text; an unescaped `"` would end the scalar and break the file."""
+        note = 'moved to the "operating" runbook, see `rm` \\ guards'
+
+        self.h.edit_front_matter(self.doc, assign={"next": note})
+
+        self.assertEqual(self.h.read_front_matter(self.doc)["next"], note)
+
     def test_refuses_a_file_without_frontmatter(self):
         plain = self.docs / "plain.md"
         plain.write_text("# no frontmatter\n")
@@ -149,6 +157,33 @@ class Verbs(HandoverCase):
 
         self.assertEqual(fields["status"], "open")
         self.assertNotIn("closed", fields)
+
+    def test_next_rewrites_the_action_without_closing(self):
+        """A `next:` can go wrong, not just stale — correcting it must not close the doc."""
+        self.h.cmd_next(self._item(), "actually: verify the sweep first")
+        fields = self.h.read_front_matter(self.doc)
+
+        self.assertEqual(fields["next"], "actually: verify the sweep first")
+        self.assertEqual(fields["status"], "open")
+        self.assertNotIn("closed", fields)
+        self.assertEqual(fields["updated"], datetime.date.today().isoformat())
+
+    def test_next_works_on_a_closed_doc_too(self):
+        self.h.cmd_done(self._item(), note=None)
+
+        self.h.cmd_next(self._item(), "reopened question")
+
+        fields = self.h.read_front_matter(self.doc)
+        self.assertEqual(fields["next"], "reopened question")
+        self.assertEqual(fields["status"], "done")
+
+    def test_next_leaves_the_rest_of_the_frontmatter_alone(self):
+        self.h.cmd_next(self._item(), "x")
+        text = self.doc.read_text()
+
+        self.assertIn("publish: false\n", text)
+        self.assertIn("tags: [a, b]\n", text)
+        self.assertIn("Body text that must survive verbatim.", text)
 
     def test_untrack_removes_the_block_when_nothing_else_is_left(self):
         """A doc whose frontmatter was only handover keys should not keep a bare `---\\n---`."""
