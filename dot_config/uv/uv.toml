@@ -1,0 +1,2 @@
+# Supply chain protection: only resolve package versions published at least 7 days ago
+exclude-newer = "7 days"
