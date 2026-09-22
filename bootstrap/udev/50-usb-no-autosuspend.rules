@@ -21,3 +21,12 @@ ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="047d", ATTR{idProduct}=
 # mouse/keyboard stutter diagnosed in usb-stutter-fix.md.
 ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="05e3", ATTR{idProduct}=="0610", TEST=="power/control", ATTR{power/control}="on"
 ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="05e3", ATTR{idProduct}=="0620", TEST=="power/control", ATTR{power/control}="on"
+
+# Razer Basilisk V3 Pro — pointing device. With autosuspend on (2s delay) the
+# mouse suspends whenever your hand rests, and the cursor then sits frozen in
+# place until the device finishes waking, which takes seconds rather than
+# milliseconds. Confirmed 2026-09-22: power/runtime_status read "suspended" for
+# the entire time the cursor was reported stuck, on a 10-sample/5s trace.
+# Both PIDs are the same mouse — it enumerates differently wired vs. dongle.
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="1532", ATTR{idProduct}=="00ab", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="1532", ATTR{idProduct}=="00aa", TEST=="power/control", ATTR{power/control}="on"

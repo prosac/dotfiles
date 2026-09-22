@@ -205,7 +205,7 @@ for d in /sys/bus/usb/devices/*-*; do
   v=$(cat "$d/idVendor" 2>/dev/null) || continue
   p=$(cat "$d/idProduct" 2>/dev/null) || continue
   case "$v:$p" in
-    047d:8055|05e3:0610|05e3:0620)
+    047d:8055|05e3:0610|05e3:0620|1532:00aa|1532:00ab)
       printf "  %-12s %s  power/control=%s\n" "$(basename "$d")" "$v:$p" "$(cat "$d/power/control" 2>/dev/null)" ;;
   esac
 done
