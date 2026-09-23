@@ -5,8 +5,10 @@ identity from its FIRST prompt, so sessions in the same repo stay distinct.
 On the first prompt of a session it computes the identity (glyph + accent, via
 `term-ident identity`), records it — plus a short gist of the prompt — to a
 per-session file that `claude-statusline` reads, and seeds term-ident so the
-window border/tint take the session hue. Later prompts find the file and bail;
-when Claude exits, the next shell prompt restores the project color (zsh hook).
+window border/tint take the session hue. Later prompts re-assert that seed via
+`term-ident ensure`, which repaints only if a dark/light flip has invalidated the
+tint since — the session's only chance to self-heal, having no shell prompt of its
+own. When Claude exits, the next shell prompt restores the project color.
 
 Reads hook JSON on stdin ({session_id, prompt, ...}); never blocks submission.
 """
@@ -50,8 +52,23 @@ def main() -> int:
     os.makedirs(STATE_DIR, exist_ok=True)
     state_file = os.path.join(STATE_DIR, f"session-{safe_id}.json")
 
-    # First prompt wins the identity; later prompts find the file and bail.
+    # First prompt wins the identity. Later prompts re-assert it instead of
+    # bailing: the tint is computed against the active color scheme, and a flip
+    # partway through a session invalidates it. A shell repairs itself from its
+    # precmd hook, but a Claude session shows no shell prompt for as long as it
+    # runs, so a prompt submission is the only event it has to heal on. `ensure`
+    # is a no-op — one file read — when nothing has changed.
     if os.path.exists(state_file):
+        try:
+            with open(state_file) as f:
+                seed = json.load(f).get("seed")
+        except (OSError, json.JSONDecodeError, ValueError):
+            seed = None
+        if seed:
+            try:
+                subprocess.run([TERM_IDENT, "ensure", seed], timeout=3)
+            except (OSError, subprocess.SubprocessError):
+                pass
         return 0
 
     record = {"seed": prompt, "gist": gist(prompt), **identity(prompt)}
