@@ -11,11 +11,31 @@ prompt only the project name is shown, dimmed.
 
 Reads the statusLine JSON on stdin; prints one line. Never crashes the bar.
 """
+import importlib.machinery
+import importlib.util
 import json
 import os
 import sys
 
 STATE_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "term-ident")
+TERM_IDENT = os.path.expanduser("~/.local/bin/term-ident")
+
+
+def term_ident():
+    """Import term-ident as a module, so the palette has exactly one home.
+
+    In-process on purpose: this runs on every statusline render, which is far too
+    often to spawn `term-ident identity`. The file has no .py suffix and guards
+    its own entry point, so importing it only defines the palette and helpers."""
+    try:
+        spec = importlib.util.spec_from_loader(
+            "term_ident",
+            importlib.machinery.SourceFileLoader("term_ident", TERM_IDENT))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
 
 RESET = "\x1b[0m"
 DIM = "\x1b[2m"
@@ -57,6 +77,17 @@ def main() -> int:
     model = ((data.get("model") or {}).get("display_name") or "").strip()
     ident = session_identity(data)
     glyph, accent, gist = ident.get("glyph"), ident.get("accent"), ident.get("gist")
+
+    # The accent stored at first prompt belongs to whatever scheme was active
+    # then, and it is a background-dependent colour: a dark-scheme accent on the
+    # light theme is unreadable (#46d9ff on #f9f9f9 is contrast 1.4). Re-derive it
+    # from the seed for the CURRENT scheme; the stored value is the fallback.
+    seed, ti = ident.get("seed"), term_ident()
+    if seed and ti:
+        try:
+            accent = ti.accent_for(seed)
+        except Exception:
+            pass
 
     parts = []
     if accent and glyph:
