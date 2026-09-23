@@ -608,3 +608,23 @@ windowrule = rounding 0, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando
 windowrule = float true, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Settings)$
 windowrule = size 60% 70%, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Settings)$
 windowrule = center true, match:class ^(menu\.kando\.Kando)$, match:title ^(Kando Settings)$
+
+# ---------------------------------------------------------------------------
+# Compositor-side logging.
+# ---------------------------------------------------------------------------
+# Hyprland defaults debug:disable_logs to TRUE, which silences its OWN logging
+# entirely -- $XDG_RUNTIME_DIR/hypr/<sig>/hyprland.log then contains only
+# aquamarine's lines plus ~23 pre-config startup lines. That gap cost real
+# evidence on 2026-09-10: after a failed modeset there was no way to see what
+# Hyprland itself did (applyMonitorRule, the WARN on state.commit(), the mode
+# retries), only what the DRM backend logged.
+#
+# ⚠️ This makes the log larger, and there is no way to trim the biggest source:
+# aquamarine hardcodes LIBINPUT_LOG_PRIORITY_DEBUG (Session.cpp), so every
+# touchpad event is logged with no env var or config to lower it. The log lives
+# on tmpfs, so it costs RAM, not disk, and dies with the session.
+#
+# See ~/Documents/docs/hyprland-resume-hdmi-modeset-failure-lock-invisible.md
+debug {
+    disable_logs = false
+}
