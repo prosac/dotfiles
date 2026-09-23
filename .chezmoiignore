@@ -54,4 +54,5 @@ tests
 {{- if ne (dig "passwordManager" "none" .) "1password" }}
 .local/bin/docker-credential-op
 .config/containers/auth.json
+.local/bin/glab
 {{- end }}
