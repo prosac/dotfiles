@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""glab wrapper: fetch the GitLab token from the password manager per invocation.
+
+glab keeps host tokens in plaintext in ~/.config/glab-cli/config.yml. This wrapper
+sits earlier on PATH than the real binary, works out which GitLab host the command
+targets, reads that host's token from 1Password, and hands it to glab through the
+process environment for this one invocation only. Nothing is written to disk.
+
+One 1Password item per host, titled  `GitLab token <host>`  (category API
+Credential, the token in the `credential` field), found by title across vaults.
+
+Host resolution, first hit wins: GITLAB_TOKEN already set (pass straight through),
+GITLAB_HOST, a -R/--repo argument carrying a host, the cwd's `origin` remote, the
+`host:` default in glab's config. If the lookup fails glab runs without a token and
+reports its own error, so nothing here can hide a broken setup.
+"""
+import os
+import re
+import subprocess
+import sys
+
+CONFIG = os.path.expanduser("~/.config/glab-cli/config.yml")
+ITEM_TITLE = "GitLab token {host}"
+
+
+def real_glab():
+    me = os.path.realpath(__file__)
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        cand = os.path.join(d, "glab")
+        if os.path.isfile(cand) and os.access(cand, os.X_OK) and os.path.realpath(cand) != me:
+            return cand
+    sys.exit("glab wrapper: no real glab binary found on PATH")
+
+
+def host_from_url(url):
+    m = re.match(r"^(?:[a-z+]+://)?(?:[^@/]+@)?([^/:]+)", url or "")
+    return m.group(1) if m and "." in m.group(1) else None
+
+
+def host_from_args(argv):
+    for i, a in enumerate(argv):
+        val = None
+        if a in ("-R", "--repo") and i + 1 < len(argv):
+            val = argv[i + 1]
+        elif a.startswith("--repo="):
+            val = a.split("=", 1)[1]
+        if val and ("://" in val or "@" in val or val.count("/") >= 2):
+            return host_from_url(val)
+    return None
+
+
+def host_from_git():
+    try:
+        url = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True,
+                             text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return host_from_url(url)
+
+
+def host_from_config():
+    try:
+        for line in open(CONFIG):
+            m = re.match(r"^host:\s*(\S+)", line)
+            if m:
+                return m.group(1)
+    except OSError:
+        pass
+    return None
+
+
+def token_for(host):
+    try:
+        r = subprocess.run(["op", "item", "get", ITEM_TITLE.format(host=host), "--fields",
+                            "label=credential", "--reveal"], capture_output=True, text=True)
+    except OSError as e:
+        print(f"glab wrapper: cannot run op ({e}); continuing without a token", file=sys.stderr)
+        return None
+    if r.returncode != 0 or not r.stdout.strip():
+        print(f"glab wrapper: no token for {host} in 1Password "
+              f"(item '{ITEM_TITLE.format(host=host)}'); continuing without one", file=sys.stderr)
+        return None
+    return r.stdout.strip()
+
+
+def main():
+    args = sys.argv[1:]
+    env = dict(os.environ)
+    if not env.get("GITLAB_TOKEN"):
+        host = (env.get("GITLAB_HOST") or host_from_args(args) or host_from_git()
+                or host_from_config())
+        if host:
+            tok = token_for(host)
+            if tok:
+                env["GITLAB_TOKEN"] = tok
+                env.setdefault("GITLAB_HOST", host)
+    binary = real_glab()
+    os.execve(binary, [binary, *args], env)
+
+
+if __name__ == "__main__":
+    main()
