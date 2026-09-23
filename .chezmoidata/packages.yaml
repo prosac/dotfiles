@@ -124,6 +124,19 @@ packages:
     # would put a second wallpaper daemon on the machine with nothing enabling
     # it. It stays installed on hosts that already have it; dnf only adds.
     - hyprland
+    # Headers for the hyprtasking plugin (Super+Tab overview), built by
+    # ~/.local/bin/hyprtasking-rebuild. Hyprland plugins are ABI-pinned to the
+    # exact compositor build, so this MUST stay at the same version as hyprland
+    # -- the rebuild script refuses to build on a mismatch rather than produce a
+    # .so that crashes the compositor on load. Both come from the same COPR and
+    # the `hypr*` includepkgs pin already covers it, so dnf keeps them in step.
+    #
+    # Without it a fresh machine cannot build the plugin at all, and the only
+    # symptom is Hyprland's on-screen Error Overlay reporting
+    # `hyprtasking:toggle` as an invalid dispatcher -- three steps removed from
+    # "a -devel package is missing". That is how this machine came up on
+    # 2026-09-02.
+    - hyprland-devel
     - hypridle
     - hyprlock
     - waybar
@@ -193,6 +206,28 @@ packages:
   dnfF43Plus:
     - walker
     - elephant
+
+    # Hyprland's Qt/QML helper binaries: hyprland-dialog, hyprland-update-screen,
+    # hyprland-welcome, hyprland-run. Hyprland calls these for anything it cannot
+    # draw itself -- notably the DynamicPermissionManager's permission prompts --
+    # and it CHECKS FOR THEM AT STARTUP, so on a machine without them every single
+    # login opens with an on-screen warning:
+    #
+    #   Your system does not have hyprland-guiutils installed. This is a runtime
+    #   dependency for some dialogs. Consider installing it.
+    #
+    # Renamed upstream from hyprland-qtutils, which is why searching for the old
+    # name finds nothing. Only `Recommends:`ed by hyprland, so dnf will not pull
+    # it in on its own.
+    #
+    # The alternative is `misc:disable_hyprland_guiutils_check = true` in
+    # hyprland.conf, which silences the warning and leaves the dialogs unable to
+    # appear -- fine for a headless box, wrong for this one.
+    #
+    # F43+ because lionheartp/Hyprland is the only repo that carries it (no
+    # Fedora, no Terra build) and that COPR has no F42 chroot. Already allowed by
+    # that COPR's `hypr*` includepkgs pin.
+    - hyprland-guiutils
 
     # Wallpaper picker (Super+W), and the other half of the awww pairing above.
     # F43+ because lionheartp/Hyprland is the ONLY repo that carries it -- it is
