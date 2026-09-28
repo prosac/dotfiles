@@ -11,11 +11,11 @@ set -eu
 gsettings set org.gnome.desktop.interface gtk-enable-primary-paste true
 
 # Razer Basilisk V3 Pro at 3200 DPI. Hyprland scales it down on the desktop
-# (accel_profile "custom 1 0 0.4" in hyprland.lua), so the two values go
-# together. openrazer saves the value and restores it on every daemon start, so
-# setting it once is enough. Skipped if the daemon or mouse is not there yet
-# (a fresh machine before relogin into plugdev); then run this script again by
-# hand, or directly:
+# (accel_profile "custom 1 0 0.4" in hyprland.lua, applied only while this mouse
+# is attached), so the two values go together. openrazer saves the value and
+# restores it on every daemon start, so setting it once is enough. Skipped if
+# the daemon or mouse is not there yet (a fresh machine before relogin into
+# plugdev); then run this script again by hand, or directly:
 #   busctl --user call org.razer /org/razer/device/<serial> razer.device.dpi setDPI qq 3200 3200
 dpi=3200
 if serials=$(busctl --user call org.razer /org/razer razer.devices getDevices 2>/dev/null); then
