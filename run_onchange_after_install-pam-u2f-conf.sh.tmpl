@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Keeps /etc/security/pam_u2f.conf in step with bootstrap/pam/pam_u2f.conf.
+# Re-runs automatically when the source changes:
+# source hash: {{ include "bootstrap/pam/pam_u2f.conf" | sha256sum }}
+#
+# Why this exists: the file used to be installed only by the manual
+# `mise run bootstrap:pam-u2f`. When the temporary `debug` block was dropped
+# from the source on 2026-09-01, nobody re-ran the task, so joes-tuxedo kept
+# dumping libfido2 hex traces into every sudo for four more weeks.
+#
+# Only UPDATES an existing file. A machine without it never opted into FIDO2 PAM
+# (bootstrap/SETUP.md), and pushing `userverification = 1` onto one would be a
+# setup decision, not drift -- that stays with the mise task.
+set -euo pipefail
+
+SRC="{{ .chezmoi.sourceDir }}/bootstrap/pam/pam_u2f.conf"
+DST=/etc/security/pam_u2f.conf
+
+if [[ ! -f "$DST" ]]; then
+  exit 0
+fi
+
+if ! cmp -s "$SRC" "$DST"; then
+  sudo install -m 644 -o root -g root "$SRC" "$DST"
+  echo "==> Updated $DST from the chezmoi source"
+fi
+
+# The option can also sit on a module line; name any that survive.
+if grep -rqsE '^[^#]*pam_u2f\.so.*\bdebug\b' /etc/pam.d/ || grep -qsE '^\s*debug\b' "$DST"; then
+  echo "⚠️  pam_u2f debug is still enabled somewhere:" >&2
+  grep -rnsE '^[^#]*pam_u2f\.so.*\bdebug\b' /etc/pam.d/ "$DST" >&2 || true
+  grep -nsE '^\s*debug\b' "$DST" >&2 || true
+fi
