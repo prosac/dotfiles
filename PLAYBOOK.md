@@ -222,6 +222,14 @@ mise run bootstrap:dms-session        # one-time: installs /usr/share/wayland-se
 
 Then log out and pick "Hyprland (DMS)" at GDM. To remove: `sudo rm /usr/share/wayland-sessions/hyprland-dms.desktop`.
 
+**Booting straight into it** is a *separate* switch — `mise run bootstrap:gdm-autologin`, which sets `AutomaticLoginEnable=True` / `AutomaticLogin=jo` in `/etc/gdm/custom.conf`. Kept out of `bootstrap:dms-session` on purpose: it trades the GDM pam_u2f gate for the LUKS passphrase being the only thing between power-on and a live session, which is a decision, not an install detail.
+
+⚠️ **"It booted into GNOME instead of my session" is almost always this switch, and the symptom lies.** With autologin off, boot stops at the GDM greeter — which *is* GNOME Shell, running as the `gdm-greeter` user. It reads as "the wrong session started", so the hunt goes into the Hyprland/DMS session, where nothing is wrong. Check `grep AutomaticLoginEnable /etc/gdm/custom.conf` first. It was flipped to `False` on 2026-09-02 from a `sudo -i` shell during the pam_u2f work on `/etc/pam.d/gdm-password` — correct while testing a login prompt you have to see, never put back — and every boot from then to 2026-09-07 stopped at the greeter.
+
+GDM has **no `conf.d/` drop-in for `custom.conf`**, so there is nowhere to assert this but the file itself; `bootstrap/gdm/autologin.awk` rewrites just those two keys and leaves the rest of the file (including anything a future gdm update adds) untouched. *Which* session autologin starts is not set here — that is `Session=` in `/var/lib/AccountsService/users/jo`, which GDM rewrites on every login, so picking a session at the greeter once is what changes it. The task prints that key.
+
+Autologin does not risk a boot loop: gdm attempts automatic login only **once per boot**, so a session that dies immediately drops you back at the greeter rather than cycling.
+
 **How it stays isolated.** A second *Hyprland* session cannot announce a distinct `XDG_CURRENT_DESKTOP` (it must stay `Hyprland` or xdg-desktop-portal-hyprland stops matching), so it cannot use the `ConditionEnvironment=` lever the niri session uses. Instead `~/.local/bin/hyprland-dms` masks the units DMS supersedes for the lifetime of the session.
 
 ⚠️ **Not with `systemctl --user --runtime mask`.** That writes into `/run/user/$UID/systemd/user/`, which is rank 8 in the user unit search path — *below* `~/.config/systemd/user/` at rank 5, where every one of these units actually lives. The real unit file shadows the symlink, so the mask is a **silent no-op**: nothing errors, the unit stays `enabled`, and it starts anyway. That produced a session with waybar on top of the DMS bar and two notification daemons. The masks go into `/run/user/$UID/systemd/user.control/` (rank 2) instead.
