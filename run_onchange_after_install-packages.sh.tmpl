@@ -127,6 +127,12 @@ packages=(
 )
 sudo dnf -y install "${packages[@]}"
 
+# openrazer-daemon refuses to talk to the mouse unless the user is in plugdev
+# (the group ships with openrazer). Takes effect at the next login.
+if ! id -nG "$USER" | tr ' ' '\n' | grep -qx plugdev; then
+  sudo usermod -aG plugdev "$USER"
+fi
+
 echo "==> User-level tools (installed if missing)..."
 if ! command -v mise >/dev/null; then
   echo "  installing mise..."

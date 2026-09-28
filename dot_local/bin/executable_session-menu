@@ -4,7 +4,7 @@
 WHY THIS EXISTS
 
 Until this, the only way out of a session was a bare keybind -- `exit` in
-hyprland.conf, `quit` in niri -- with no visible affordance anywhere, and in the
+hyprland.lua, `quit` in niri -- with no visible affordance anywhere, and in the
 Hyprland case the wrong mechanism. Both Hyprland sessions ("Hyprland" and
 "Hyprland (DMS)") are started through uwsm, whose README is explicit:
 

@@ -26,7 +26,7 @@ This version instead reconciles against the ACTUAL current monitor set:
   * We only act (re-run setup + bounce swayosd) when the monitor SIGNATURE
     actually changed, so idle ticks and duplicate events are free.
 
-Launched from hyprland.conf as `exec-once` (IPC/hyprctl-coupled glue lives in
+Launched from hyprland.lua's hyprland.start handler (IPC/hyprctl-coupled glue lives in
 exec-once, mirroring reading-column.py — not a systemd user service).
 Event format on socket2 is "<event>>><payload>" — see https://wiki.hypr.land/IPC/
 """
@@ -67,7 +67,7 @@ def monitor_signature():
 
 def run_setup():
     # setup_workspaces.sh skips its 2s startup wait when this is set (the initial
-    # run is owned by the separate `exec` line in hyprland.conf).
+    # run is owned by the top-level exec_cmd in hyprland.lua).
     env = {**os.environ, "HYPRLAND_WORKSPACES_INITIALIZED": "1"}
     subprocess.run([SETUP], env=env, capture_output=True, text=True)
     # swayosd-server (GTK layer-shell) can wedge when Wayland outputs churn on

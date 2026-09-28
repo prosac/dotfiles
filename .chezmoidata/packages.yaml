@@ -194,6 +194,16 @@ packages:
   # creates a uv venv with --system-site-packages so lieer can import it.
   # gmime30 (gmime 3.x runtime) is pulled in by notmuch automatically.
   # jq is used by ~/.local/bin/mail-sync to detect refresh-token rotation.
+
+    # Razer Basilisk V3 Pro (replaced the G502 X PLUS, whose receiver died on
+    # 2026-09-21). openrazer, from Terra, is the only thing that sets its DPI;
+    # run_onchange_after_apply-input-settings.sh sets it to 3200 and the daemon
+    # restores it from then on. Pulls akmod-openrazer, i.e. a kernel module
+    # built locally for every kernel. The daemon only talks to the mouse for
+    # members of `plugdev`; the install script adds the user to that group.
+    # Do NOT use RazerGenie to set the DPI: it showed 6400 and never changed the mouse.
+    - openrazer
+
   dnfMail:
     - notmuch
     - python3-notmuch2

@@ -3,7 +3,7 @@
 
 Hyprland plugins are ABI-pinned to the exact compositor build, so the .so has to
 be rebuilt after EVERY Hyprland update or `hyprctl plugin load` fails and the
-Super+Tab overview is silently gone (hyprland.conf's exec-once notifies instead).
+Super+Tab overview is silently gone (hyprland.lua's hyprland.start handler runs `--ensure`).
 
 What it does:
   0. clones the plugin source if it is not there yet (a fresh machine has no
