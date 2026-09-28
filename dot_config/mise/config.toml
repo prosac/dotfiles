@@ -315,6 +315,53 @@ echo "Log out and pick 'Hyprland (DMS)' at GDM to try it."
 description = "Verify a 'Hyprland (DMS)' session came up right (masks took, DMS owns notifications, cleanup unit armed) -- run from inside that session"
 run = '~/.local/bin/dms-session-check'
 
+# The other half of "boot into DMS": bootstrap:dms-session makes the session
+# selectable, this makes the machine actually go there without stopping at the
+# greeter. Split from that task on purpose -- the session entry is useful on its
+# own, and autologin is a security decision (it trades the GDM pam_u2f/password
+# gate for the LUKS passphrase being the only thing between power-on and a live
+# session), so it should not be a silent side effect of installing a .desktop.
+[tasks."bootstrap:gdm-autologin"]
+description = "Boot straight into the last-used session instead of stopping at the GDM greeter (asks for sudo)"
+run = '''
+set -e
+conf=/etc/gdm/custom.conf
+user="${USER:-$(id -un)}"
+prog="$(chezmoi source-path)/bootstrap/gdm/autologin.awk"
+
+new="$(mktemp)"
+trap 'rm -f "$new"' EXIT
+awk -v user="$user" -f "$prog" < "$conf" > "$new"
+
+if cmp -s "$new" "$conf"; then
+  echo "$conf already autologins $user — unchanged."
+else
+  sudo install -m 644 -o root -g root "$new" "$conf"
+  echo "Set AutomaticLoginEnable=True / AutomaticLogin=$user in $conf."
+fi
+
+# WHICH session autologin lands in is GDM's state, not this task's -- see the
+# warning block in bootstrap/gdm/autologin.awk. Printed so a wrong value is
+# visible here instead of only at the next boot.
+acct="/var/lib/AccountsService/users/$user"
+keys="$(mktemp)"
+trap 'rm -f "$new" "$keys"' EXIT
+echo "Session GDM will start (from $acct):"
+# Redirected to a file rather than piped into sed: a `sudo ... | sed` pipeline
+# reports sed's exit status, so a failed/denied read would silently print
+# nothing instead of falling through to the "none recorded" branch.
+if sudo grep -hE '^(Session|XSession|SessionType)=' "$acct" >"$keys" 2>/dev/null && [ -s "$keys" ]; then
+  sed 's/^/  /' "$keys"
+else
+  echo "  (none recorded — log in once at the greeter to set it)"
+fi
+echo "To change it, pick a different session at the greeter once; GDM rewrites that file on login."
+echo
+echo "Takes effect at the next boot. A session that dies immediately does NOT"
+echo "loop: gdm attempts automatic login only once per boot and falls back to"
+echo "the greeter, so a broken DMS session still leaves you a way in."
+'''
+
 [tasks."bootstrap:sleep"]
 description = "Lid close -> plain suspend: logind/sleep drop-ins, zram off, SELinux labels on the swap subvolume, UPower critical action (asks for sudo)"
 run = '''
