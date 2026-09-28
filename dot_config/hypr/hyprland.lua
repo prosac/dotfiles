@@ -367,7 +367,17 @@ hl.config({
         repeat_rate  = 50,   -- keys per second while held (default 25)
         repeat_delay = 250,  -- ms before repeat kicks in (default 600)
 
-        sensitivity = 0, -- -1.0 - 1.0, 0 means no modification.
+        sensitivity = 0, -- -1.0 - 1.0, 0 means no modification. NO EFFECT on 0.56.2, see below.
+
+        -- Pointer speed. The Razer Basilisk V3 Pro runs at high DPI (3200, set
+        -- via openrazer — see below) and is scaled down here with a custom
+        -- libinput curve: "custom <step> <p0> <p1>" is a straight line, so the
+        -- last number is a plain speed multiplier (0.4 ≈ 1280 DPI feel, no
+        -- acceleration). Tune live without reloading:
+        --   hyprctl eval 'hl.config({ input = { accel_profile = "custom 1 0 0.3" } })'
+        -- Global because hl.device silently ignores pointer settings on 0.56.2;
+        -- a touchpad would get this curve too (none is connected on 2026-09-22).
+        accel_profile = "custom 1 0 0.4",
 
         natural_scroll = true,
 
@@ -395,6 +405,14 @@ hl.config({
         },
     },
 })
+
+-- Razer Basilisk V3 Pro. DPI is set on the mouse through the openrazer daemon,
+-- which restores it when the daemon starts:
+--   busctl --user call org.razer /org/razer/device/PM2625H26302512 razer.device.dpi setDPI qq 3200 3200
+-- RazerGenie showed 6400 but never changed the mouse. Tested 2026-09-22 on
+-- 0.56.2: `sensitivity` has NO effect, whether set via hl.device, globally in
+-- this file with a reload, or via `hyprctl eval`. `accel_profile` (above) works,
+-- including via eval.
 
 
 ---------------------
