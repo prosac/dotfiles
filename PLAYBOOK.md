@@ -79,6 +79,23 @@ Then follow `bootstrap/SETUP.md` for the per-machine privileged setup (sudoers +
 mise run ch:sync                  # pull + apply
 ```
 
+#### Moving an existing machine onto the Lua Hyprland config (2026-09)
+
+`hyprland.conf.tmpl` became `hyprland.lua`, and every script that talks to Hyprland now uses `hyprctl eval` / Lua dispatchers. The order matters:
+
+1. **Upgrade Hyprland first**: `sudo dnf upgrade --refresh`, then `rpm -q hyprland` must say 0.56.2 or later (tested on 0.56.2, from `lionheartp/Hyprland`). If a build can't read Lua, it ignores `hyprland.lua`, keeps loading the stale `hyprland.conf`, and the scripts' `hyprctl eval` calls fail against it.
+2. **`chezmoi init`** to answer the prompts added since that machine's last init (`gitPeerSetup`). Optional, because the templates `dig` for missing keys, but it silences the "config file template has changed" warning.
+3. **`mise run ch:sync`.** The run scripts ask for sudo several times (packages, pam_u2f conf, sleep hooks, lockup panic).
+4. **`~/.local/bin/hyprtasking-rebuild`** if the plugin was built against an older Hyprland.
+5. **Log out and back in.** This picks up the new config and the `plugdev` group. Then `hyprctl configerrors` must be empty.
+
+Things that differ per machine:
+
+- **Pointer speed.** The 0.4× curve for the Razer is only applied when a Basilisk V3 Pro is attached *when the config loads* (it is global, so it would also slow a touchpad). After plugging it into a running session, `hyprctl reload`. The laptop's old per-device `flat / -0.5` blocks for the G502 and Rival 3 did not survive the port, because `hl.device` ignores pointer settings on 0.56.2.
+- **openrazer is an akmod.** With Secure Boot on, the module only loads if the akmods key is enrolled (`mokutil --list-enrolled | grep -i akmods`; if it isn't, run `sudo kmodgenca -a && sudo mokutil --import /etc/pki/akmods/certs/public_key.der` and reboot). Without the Razer this is harmless: the DPI step is skipped.
+- **GDM autologin is not applied by sync.** It's opt-in per machine: `mise run bootstrap:gdm-autologin`.
+- **The old `hyprland.conf` / `workspaces.conf` stay in `~/.config/hypr`** and Hyprland ignores them. They are *not* a fallback, so rolling back means reverting the merge, not renaming a file.
+
 ## Source file naming
 
 | Prefix / suffix          | Target effect                          |
@@ -130,7 +147,7 @@ Grows as workflows land.
   - Waybar `on-click` field → **must** use `{{ .chezmoi.homeDir }}` — GLib `g_spawn_command_line_async` does not expand env vars
   - JSON, TOML without env support, sudoers, etc. → chezmoi template
 - **No hardcoded home paths.** Never `/home/<user>` in any committed file.
-- **Per-machine files** go into `.chezmoiignore` (e.g. `monitors.conf`, `workspaces.conf` — managed by nwg-displays per host; `.config/systemd/user/*.wants` — systemd's enable state).
+- **Per-machine files** go into `.chezmoiignore` (e.g. `monitors.lua`, `workspaces.lua` — managed by nwg-displays per host; `.config/systemd/user/*.wants` — systemd's enable state).
 - **Identity** (name, email) comes from `chezmoi init` prompts, stored in local `~/.config/chezmoi/chezmoi.toml` (never committed). *Stage 3.*
 - **Per-machine opt-ins** also live in those prompts and gate optional stacks. Today: `passwordManager` (`1password`/`bitwarden`/`none`) — only `1password` enables SSH-signed commits in `.gitconfig`; `mailSetup` (bool, default `false`) — gates the notmuch + lieer Gmail stack (Doom `:email notmuch`, `.notmuch-config`, `mail-sync` scripts, systemd timer, lieer venv installer, mail dnf packages). Re-prompt by deleting the relevant line from `~/.config/chezmoi/chezmoi.toml` and re-running `chezmoi init`.
 - **Repo-only files** (README.md, PLAYBOOK.md, bootstrap/) live at source root and are listed in `.chezmoiignore` so they aren't applied to `~`.
@@ -269,7 +286,7 @@ Everything above is seeded once into `~/.config/DankMaterialShell/settings.json`
 
 `hypridle.conf` itself is never edited — it is shared with the default and niri sessions, which keep their 5-minute dim, 10-minute hyprlock and resume handling exactly as before. Masking the unit is what takes it out of this session.
 
-**Wallpaper is DMS's in this session.** `awww.service` and `waypaper.service` are masked like the other superseded units, and Super+W is re-pointed at `dms ipc call dash toggle wallpaper` by `dms-binds`. Both halves are required: a mask alone cannot stop waypaper, which starts a daemon itself whenever `pgrep awww-daemon` comes back empty, so one keypress would put an unmanaged daemon on top of DMS's layer.
+**Wallpaper is DMS's in this session.** `awww.service` and `waypaper.service` are masked like the other superseded units, and Super+W is re-pointed at `dms ipc call dash toggle wallpaper` by the DMS-session block in `hyprland.lua`. Both halves are required: a mask alone cannot stop waypaper, which starts a daemon itself whenever `pgrep awww-daemon` comes back empty, so one keypress would put an unmanaged daemon on top of DMS's layer.
 
 This used to say wallpaper was left alone because it is "entangled with `toggle-color-scheme`". It is not — `toggle-color-scheme` never references awww/swww/waypaper, and waypaper's `post_command` is empty. The entanglement that mattered was matugen's, and that is already handled by the dnf exclude plus the DMS template flags.
 
