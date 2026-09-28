@@ -84,7 +84,7 @@ mise run ch:sync                  # pull + apply
 `hyprland.conf.tmpl` became `hyprland.lua`, and every script that talks to Hyprland now uses `hyprctl eval` / Lua dispatchers. The order matters:
 
 1. **Upgrade Hyprland first**: `sudo dnf upgrade --refresh`, then `rpm -q hyprland` must say 0.56.2 or later (tested on 0.56.2, from `lionheartp/Hyprland`). If a build can't read Lua, it ignores `hyprland.lua`, keeps loading the stale `hyprland.conf`, and the scripts' `hyprctl eval` calls fail against it.
-2. **`chezmoi init`** to answer the prompts added since that machine's last init (`gitPeerSetup`). Optional, because the templates `dig` for missing keys, but it silences the "config file template has changed" warning.
+2. **`chezmoi init`** to answer the prompts added since that machine's last init: `gitPeerSetup`, `reposRoot` (sandy; the default `~/repos` is wrong wherever checkouts live in `~/code`) and `sandyWorkspace`. Optional, because the templates `dig` for missing keys, but it silences the "config file template has changed" warning. Run it in a real terminal, because it needs `/dev/tty`. Where there is none (Claude Code's `!`), use `printf '\n' | chezmoi init --no-tty --promptBool '<prompt text>=false' --promptString '<prompt text>=~/code'`. The flags match the *prompt text*, not the key name, and an empty `--promptString` value counts as unanswered, hence the blank stdin line.
 3. **`mise run ch:sync`.** The run scripts ask for sudo several times (packages, pam_u2f conf, sleep hooks, lockup panic).
 4. **`~/.local/bin/hyprtasking-rebuild`** if the plugin was built against an older Hyprland.
 5. **Log out and back in.** This picks up the new config and the `plugdev` group. Then `hyprctl configerrors` must be empty.
