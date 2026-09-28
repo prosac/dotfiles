@@ -369,16 +369,6 @@ hl.config({
 
         sensitivity = 0, -- -1.0 - 1.0, 0 means no modification. NO EFFECT on 0.56.2, see below.
 
-        -- Pointer speed. The Razer Basilisk V3 Pro runs at high DPI (3200, set
-        -- via openrazer — see below) and is scaled down here with a custom
-        -- libinput curve: "custom <step> <p0> <p1>" is a straight line, so the
-        -- last number is a plain speed multiplier (0.4 ≈ 1280 DPI feel, no
-        -- acceleration). Tune live without reloading:
-        --   hyprctl eval 'hl.config({ input = { accel_profile = "custom 1 0 0.3" } })'
-        -- Global because hl.device silently ignores pointer settings on 0.56.2;
-        -- a touchpad would get this curve too (none is connected on 2026-09-22).
-        accel_profile = "custom 1 0 0.4",
-
         natural_scroll = true,
 
         scroll_factor = 0.5, -- G502 X PLUS hi-res wheel scrolls too fast at 1.0
@@ -411,8 +401,32 @@ hl.config({
 --   busctl --user call org.razer /org/razer/device/PM2625H26302512 razer.device.dpi setDPI qq 3200 3200
 -- RazerGenie showed 6400 but never changed the mouse. Tested 2026-09-22 on
 -- 0.56.2: `sensitivity` has NO effect, whether set via hl.device, globally in
--- this file with a reload, or via `hyprctl eval`. `accel_profile` (above) works,
+-- this file with a reload, or via `hyprctl eval`. `accel_profile` (below) works,
 -- including via eval.
+--
+-- Pointer speed. The mouse runs at high DPI (3200) and is scaled down with a
+-- custom libinput curve: "custom <step> <p0> <p1>" is a straight line, so the
+-- last number is a plain speed multiplier (0.4 ≈ 1280 DPI feel, no
+-- acceleration). Tune live without reloading:
+--   hyprctl eval 'hl.config({ input = { accel_profile = "custom 1 0 0.3" } })'
+--
+-- ⚠️ The curve is GLOBAL (hl.device silently ignores pointer settings on
+-- 0.56.2), so it hits every pointer, touchpads included. It is therefore only
+-- applied when a Basilisk V3 Pro (USB 1532:00aa wired / 1532:00ab dongle) is
+-- attached when the config loads; on a machine without it -- the laptop's
+-- touchpad, any other mouse -- the libinput default stays. Checked at load
+-- only: after plugging the mouse in, `hyprctl reload`.
+local function razer_basilisk_attached()
+    local p = io.popen("ls /sys/bus/hid/devices 2>/dev/null")
+    if not p then return false end
+    local list = p:read("*a") or ""
+    p:close()
+    return list:find(":1532:00A[AB]%.") ~= nil
+end
+
+if razer_basilisk_attached() then
+    hl.config({ input = { accel_profile = "custom 1 0 0.4" } })
+end
 
 
 ---------------------
