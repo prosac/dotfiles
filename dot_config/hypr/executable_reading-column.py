@@ -27,12 +27,12 @@ and we only call hyprctl when something actually needs to change.
 layout (src/layout/space/Space.cpp), not applied per-window afterwards. So a
 column makes dwindle see a NARROW, TALL screen and stack the next window
 top/bottom instead of splitting left/right — `dwindle:split_width_multiplier`
-(0.85 in hyprland.conf) is what keeps the AUTO column side-by-side, and it only
+(0.85 in hyprland.lua) is what keeps the AUTO column side-by-side, and it only
 holds while AUTO_WIDTH stays close to the monitor height. Changing AUTO_WIDTH or
 READING_WIDTH means re-checking that ratio. See §8 of
 ~/Documents/docs/hyprland-copr-migration.md.
 
-Launched from hyprland.conf as `exec-once` (IPC/hyprctl-coupled glue lives in
+Launched from hyprland.lua's hyprland.start handler (IPC/hyprctl-coupled glue lives in
 exec-once, mirroring monitor-hotplug.py — not a systemd user service).
 Event format on socket2 is "<event>>><payload>" — see https://wiki.hypr.land/IPC/
 """
@@ -85,7 +85,10 @@ def hyprctl_json(*args):
 def default_gaps():
     """Read the config default gaps_out (e.g. "8 8 8 8" or "8") as a 4-list."""
     try:
-        custom = hyprctl_json("getoption", "general:gaps_out")["custom"]
+        # The key is "css" under hyprland.lua, "custom" under hyprland.conf. A
+        # KeyError here falls through to the hardcoded 8 without a word.
+        opt = hyprctl_json("getoption", "general:gaps_out")
+        custom = opt.get("css", opt.get("custom"))
         vals = [int(v) for v in custom.split()]
     except Exception:
         vals = [8]
@@ -132,10 +135,11 @@ def column_gaps(logical_width, target):
 
 def apply(wsid, gaps):
     t, r, b, l = gaps
-    subprocess.run(
-        ["hyprctl", "keyword", "workspace", f"{wsid}, gapsout:{t} {r} {b} {l}"],
-        capture_output=True, text=True,
-    )
+    # `hyprctl keyword` is refused under hyprland.lua; eval a workspace rule
+    # instead. Re-issuing it merges into the workspace's existing rule.
+    lua = (f'hl.workspace_rule({{ workspace = "{wsid}", '
+           f"gaps_out = {{ top = {t}, right = {r}, bottom = {b}, left = {l} }} }})")
+    subprocess.run(["hyprctl", "eval", lua], capture_output=True, text=True)
 
 
 def reconcile():

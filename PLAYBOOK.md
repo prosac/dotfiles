@@ -33,7 +33,7 @@ If you're not sure which side has the latest, run `chezmoi diff` first — it sh
 
 ### Day-to-day
 
-1. Edit live config directly (e.g. `~/.config/hypr/hyprland.conf`).
+1. Edit live config directly (e.g. `~/.config/hypr/hyprland.lua`).
 2. `mise run ch:status` — see what drifted.
 3. `mise run ch:diff` — review the delta.
 4. `mise run ch:readd` — capture into source.
@@ -222,6 +222,14 @@ mise run bootstrap:dms-session        # one-time: installs /usr/share/wayland-se
 
 Then log out and pick "Hyprland (DMS)" at GDM. To remove: `sudo rm /usr/share/wayland-sessions/hyprland-dms.desktop`.
 
+**Booting straight into it** is a *separate* switch — `mise run bootstrap:gdm-autologin`, which sets `AutomaticLoginEnable=True` / `AutomaticLogin=jo` in `/etc/gdm/custom.conf`. Kept out of `bootstrap:dms-session` on purpose: it trades the GDM pam_u2f gate for the LUKS passphrase being the only thing between power-on and a live session, which is a decision, not an install detail.
+
+⚠️ **"It booted into GNOME instead of my session" is almost always this switch, and the symptom lies.** With autologin off, boot stops at the GDM greeter — which *is* GNOME Shell, running as the `gdm-greeter` user. It reads as "the wrong session started", so the hunt goes into the Hyprland/DMS session, where nothing is wrong. Check `grep AutomaticLoginEnable /etc/gdm/custom.conf` first. It was flipped to `False` on 2026-09-02 from a `sudo -i` shell during the pam_u2f work on `/etc/pam.d/gdm-password` — correct while testing a login prompt you have to see, never put back — and every boot from then to 2026-09-07 stopped at the greeter.
+
+GDM has **no `conf.d/` drop-in for `custom.conf`**, so there is nowhere to assert this but the file itself; `bootstrap/gdm/autologin.awk` rewrites just those two keys and leaves the rest of the file (including anything a future gdm update adds) untouched. *Which* session autologin starts is not set here — that is `Session=` in `/var/lib/AccountsService/users/jo`, which GDM rewrites on every login, so picking a session at the greeter once is what changes it. The task prints that key.
+
+Autologin does not risk a boot loop: gdm attempts automatic login only **once per boot**, so a session that dies immediately drops you back at the greeter rather than cycling.
+
 **How it stays isolated.** A second *Hyprland* session cannot announce a distinct `XDG_CURRENT_DESKTOP` (it must stay `Hyprland` or xdg-desktop-portal-hyprland stops matching), so it cannot use the `ConditionEnvironment=` lever the niri session uses. Instead `~/.local/bin/hyprland-dms` masks the units DMS supersedes for the lifetime of the session.
 
 ⚠️ **Not with `systemctl --user --runtime mask`.** That writes into `/run/user/$UID/systemd/user/`, which is rank 8 in the user unit search path — *below* `~/.config/systemd/user/` at rank 5, where every one of these units actually lives. The real unit file shadows the symlink, so the mask is a **silent no-op**: nothing errors, the unit stays `enabled`, and it starts anyway. That produced a session with waybar on top of the DMS bar and two notification daemons. The masks go into `/run/user/$UID/systemd/user.control/` (rank 2) instead.
@@ -232,9 +240,9 @@ Verify a running session with `mise run check:dms-session`.
 
 ⚠️ **This breaks if lingering is ever enabled** (`loginctl enable-linger`, e.g. for rootless k3s): a user manager that outlives logout keeps `waybar.service` masked, and the *default* session then starts with no bar.
 
-**Launcher/panel keys** are re-pointed at DMS by `dms-binds.service` → `~/.local/bin/dms-binds`, which runs `hyprctl keyword unbind/bind` inside the running compositor — so `hyprland.conf` is not edited and the default session's config *and code path* stay byte-identical. Super+D / Super+Space → DMS spotlight; plus Super+N notifications, Super+A control-center, Super+X powermenu, Super+Shift+V clipboard, Super+/ keybind cheatsheet. It refuses to run unless `dms.service` is active.
+**Launcher/panel keys** are re-pointed at DMS by the `if dms_session` block at the end of `~/.config/hypr/hyprland.lua`, gated on `DESKTOP_SESSION=hyprland-dms` — the default session never evaluates it. The same block loads DMS's own fragments from `~/.config/hypr/dms/` (outputs, layout, cursor, window rules, and `binds-user.lua` from DMS's keybind editor), which is what makes those DMS Settings pages editable. Super+D / Super+Space → DMS spotlight; plus Super+N notifications, Super+A control-center, Super+X powermenu, Super+Shift+V clipboard, Super+/ keybind cheatsheet.
 
-**Locking, and the FIDO2 stick.** `Super+Escape` still runs `loginctl lock-session` (hyprland.conf is untouched); logind's `Lock` signal now reaches DMS, which owns the lock screen here. The stick still unlocks with a **bare touch, no extra keypress**: rather than DMS's native security-key mode — where the key is a separate factor you start on demand with the passkey button — DMS is pointed at `/etc/pam.d/dms-fido2` as its *primary* PAM stack (`pam_u2f sufficient` + `pam_unix required`, the same effective stack as `hyprlock-fido2`). `lockPamInlineU2f` tells DMS that stack already provides the key, so it suppresses its own factor UI and the key is armed the instant the screen locks.
+**Locking, and the FIDO2 stick.** `Super+Escape` still runs `loginctl lock-session` (unchanged in hyprland.lua); logind's `Lock` signal now reaches DMS, which owns the lock screen here. The stick still unlocks with a **bare touch, no extra keypress**: rather than DMS's native security-key mode — where the key is a separate factor you start on demand with the passkey button — DMS is pointed at `/etc/pam.d/dms-fido2` as its *primary* PAM stack (`pam_u2f sufficient` + `pam_unix required`, the same effective stack as `hyprlock-fido2`). `lockPamInlineU2f` tells DMS that stack already provides the key, so it suppresses its own factor UI and the key is armed the instant the screen locks.
 
 ```sh
 mise run bootstrap:pam-dms            # installs /etc/pam.d/dms-fido2 and asserts it is readable
