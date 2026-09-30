@@ -110,11 +110,18 @@ alias f='fzf'
 alias bw="flatpak run --command=bw com.bitwarden.desktop"
 {{- end }}
 
-# Pin the terminal window title (shown in ghostty's title bar). oh-my-zsh's
-# auto-title would overwrite it at the next prompt, so turn that off while a
-# title is pinned; `untitle` hands the title back to oh-my-zsh.
-title() { DISABLE_AUTO_TITLE=true; printf '\e]2;%s\a' "$*"; }
-untitle() { unset DISABLE_AUTO_TITLE; }
+# Pin the terminal window title (shown in ghostty's title bar): `settitle <text>`.
+# oh-my-zsh's auto-title would overwrite it at the next prompt, so turn that off
+# while a title is pinned; bare `settitle` hands the title back to oh-my-zsh.
+# Not named `title`: that is oh-my-zsh's own function, called at every prompt.
+settitle() {
+  if (( $# )); then
+    DISABLE_AUTO_TITLE=true
+    printf '\e]2;%s\a' "$*"
+  else
+    unset DISABLE_AUTO_TITLE
+  fi
+}
 
 # starship prompt
 eval "$(starship init zsh)"
