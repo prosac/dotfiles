@@ -1,0 +1,22 @@
+/* Slim, button-less title bar for a tiling WM (loaded via gtk-custom-css).
+   Shows the window title (Claude Code sets it to the session name). */
+headerbar {
+  min-height: 20px;
+  padding: 0 6px;
+  box-shadow: none;
+  border: none;
+}
+headerbar windowcontrols,
+headerbar button {
+  /* no min/max/close; Hyprland handles that */
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  opacity: 0;
+  -gtk-icon-size: 0;
+}
+headerbar .title {
+  font-size: 9pt;
+  font-weight: normal;
+}

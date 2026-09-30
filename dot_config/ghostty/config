@@ -68,3 +68,14 @@ term = xterm-ghostty
 # bumps the size. Decrease stays on ctrl+- ("-" key) and reset on ctrl+0.
 keybind = ctrl+shift+equal=increase_font_size:1
 keybind = ctrl+==unbind
+
+# Minimal title bar showing the window title (= Claude Code session name).
+# Hyprland claims server-side decorations but draws none, so force ghostty's own.
+# window-theme = ghostty takes the bar colors from the terminal theme;
+# titlebar.css slims it and drops the buttons.
+window-decoration = client
+window-theme = ghostty
+window-title-font-family = "JetBrains Mono"
+gtk-custom-css = titlebar.css
+# Rename this window's title in a dialog (ctrl+shift+r is unbound by default).
+keybind = ctrl+shift+r=prompt_surface_title
