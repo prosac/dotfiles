@@ -7,7 +7,7 @@
 # parallel terminals are recognizable at a glance:
 #
 #   - a subtle, theme-aware BACKGROUND tint   (OSC 11 -> the controlling tty)
-#   - a vivid per-window BORDER gradient        (hyprctl dispatch setprop)
+#   - a vivid per-window BORDER gradient        (hl.dsp.window.set_prop)
 #
 # Border is the strong, theme-independent cue; the bg tint is the peripheral
 # bonus. Degrades to a no-op outside Hyprland / when not running under ghostty.
@@ -110,7 +110,7 @@ end
 
 # Map the owning ghostty process to a Hyprland window address.
 #
-# Hyprland-only: the per-window border tint goes through `hyprctl setprop`, which
+# Hyprland-only: the per-window border tint goes through `hl.dsp.window.set_prop`, which
 # has no niri equivalent. Under niri this returns nil, so the border step no-ops
 # while the OSC-11 background tint (a plain terminal escape) still applies.
 def ghostty_address(start = nil)
