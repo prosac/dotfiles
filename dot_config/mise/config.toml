@@ -162,17 +162,270 @@ fi
 '''
 
 [tasks."bootstrap:pam-u2f"]
-description = "Install /etc/security/pam_u2f.conf (requires FIDO2 user verification; asks for sudo)"
+description = "Install /etc/security/pam_u2f.conf, then enable authselect with-pam-u2f -- in that order (asks for sudo)"
 run = '''
 set -e
+
+# BOTH HALVES LIVE IN ONE TASK BECAUSE THE ORDER IS LOAD-BEARING. The config file
+# must exist BEFORE the PAM line does. pam_u2f reads /etc/security/pam_u2f.conf on
+# every invocation and `userverification = 1` lives only there (it cannot go on the
+# PAM line -- authselect regenerates that and drops hand-added options). Enable the
+# feature first and you get a window -- or, if the second step is forgotten, a
+# permanent state -- where pam_u2f is live with the authenticator's DEFAULT
+# behaviour: a bare touch authenticates, so mere possession of the key is enough.
+#
+# ⚠️ ASSERT THE MODULE EXISTS FIRST. pam_u2f is `sufficient` in every stack it
+# appears in, so a missing module does not fail the stack -- it silently falls
+# through to fingerprint or password. Fedora splits the module (`pam-u2f`) from the
+# enrolment tool (`pamu2fcfg`); both are in .chezmoidata/packages.yaml now, but a
+# machine provisioned before that entry has neither, and the only evidence is one
+# journal line per unlock:
+#     PAM unable to dlopen(/usr/lib64/security/pam_u2f.so)
+# yoga ran that way from its F44 rebuild until 2026-10-01 (96 lines in one week).
+# Refuse rather than configure a stack around an absent module.
+if [ ! -f /usr/lib64/security/pam_u2f.so ]; then
+  echo "pam_u2f.so is NOT installed -- refusing to configure a stack around it." >&2
+  echo "  sudo dnf install -y pam-u2f pamu2fcfg" >&2
+  exit 1
+fi
+command -v pamu2fcfg >/dev/null 2>&1 || echo "⚠️  pamu2fcfg missing -- enrolment will be impossible (sudo dnf install -y pamu2fcfg)"
+
 src="$(chezmoi source-path)/bootstrap/pam/pam_u2f.conf"
 sudo install -m 644 -o root -g root "$src" /etc/security/pam_u2f.conf
 echo "Installed: /etc/security/pam_u2f.conf"
 echo "Effective settings:"
 grep -vE '^\s*#|^\s*$' /etc/security/pam_u2f.conf | sed 's/^/  /'
-# The PAM line must NOT carry userverification itself, or it would override this.
-echo "PAM line (authselect-generated):"
-grep -n "pam_u2f" /etc/pam.d/system-auth | sed 's/^/  /'
+
+# Idempotent. enable-feature on an already-enabled feature is harmless but still
+# rewrites and prints, so only call it when it would change something.
+if authselect current 2>/dev/null | grep -q "with-pam-u2f"; then
+  echo "authselect: with-pam-u2f already enabled"
+else
+  echo "authselect: enabling with-pam-u2f"
+  sudo authselect enable-feature with-pam-u2f
+fi
+
+# The PAM line must NOT carry userverification itself or it would override the file
+# above. authselect emits a fixed `pam_u2f.so cue`, which is exactly why it cannot.
+echo "PAM lines (authselect-generated -- never hand-edit):"
+grep -n "pam_u2f" /etc/pam.d/system-auth /etc/pam.d/password-auth | sed 's/^/  /'
+
+# with-fingerprint is deliberately NOT changed here. It is a per-machine decision
+# carried by the `fingerprintReader` chezmoi flag and it alters EVERY login path,
+# not just this one, so it stays an explicit choice. Report drift, give the command.
+echo "Fingerprint consistency:"
+flag=$(chezmoi data 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("fingerprintReader", "unknown"))' 2>/dev/null || echo unknown)
+if authselect current 2>/dev/null | grep -q "with-fingerprint"; then live=True; else live=False; fi
+echo "  fingerprintReader=$flag  authselect with-fingerprint=$live"
+if [ "$flag" = "True" ] && [ "$live" = "False" ]; then
+  echo "  ⚠️  machine declares a reader but authselect does not use it:"
+  echo "        sudo authselect enable-feature with-fingerprint"
+elif [ "$flag" = "False" ] && [ "$live" = "True" ]; then
+  echo "  ⚠️  no reader declared, yet pam_fprintd sits AHEAD of pam_u2f and will"
+  echo "      stall every authentication before the key arms -- see SETUP.md 2a:"
+  echo "        sudo authselect disable-feature with-fingerprint"
+else
+  echo "  consistent"
+fi
+
+# A configured stack with no credential behind it is the other silent half: the
+# PAM line is present, pam_u2f runs, finds no entry for the user and falls through.
+echo "Enrolment:"
+af="${XDG_CONFIG_HOME:-$HOME/.config}/Yubico/u2f_keys"
+if [ -s "$af" ]; then
+  python3 - "$af" <<'EOF'
+import sys
+d = open(sys.argv[1]).read().rstrip("\n")
+creds = d.split(":")[1:]
+bad = [i for i, c in enumerate(creds, 1) if "+verification" not in c]
+print(f"  {len(creds)} credential(s) in {sys.argv[1]}")
+if bad:
+    print(f"  ⚠️  credential(s) {bad} lack +verification, so userverification=1")
+    print(f"      cannot be satisfied by them -- re-enrol with pamu2fcfg -V")
+EOF
+else
+  echo "  none yet:  mise run bootstrap:u2f-enroll"
+fi
+'''
+
+[tasks."bootstrap:u2f-enroll"]
+description = "Enrol the plugged FIDO2 key into ~/.config/Yubico/u2f_keys with user verification (interactive: needs a touch, maybe a PIN)"
+run = '''
+set -e
+
+# INTERACTIVE ONLY. pamu2fcfg talks to the authenticator directly, but user
+# verification can fall back to a client PIN, and that prompt reads from /dev/tty --
+# so this cannot be driven from a non-TTY subprocess (an agent, a hook, a pipe).
+# Run it in a terminal.
+#
+# WHY ENROLMENT IS NOT CHEZMOI-MANAGED, and must not become so: the authfile holds
+# per-machine, per-key credentials produced by touching hardware. It cannot be
+# rendered from a template, and prosac/dotfiles is PUBLIC -- key handles are not
+# secrets, but they are machine fingerprints and do not belong in a public repo.
+# chezmoi manages the PACKAGES, pam_u2f.conf and the PAM stacks; the credential
+# stays local. This task is the reproducible path to creating it.
+
+command -v pamu2fcfg >/dev/null 2>&1 || { echo "pamu2fcfg not installed: sudo dnf install -y pamu2fcfg" >&2; exit 1; }
+[ -f /usr/lib64/security/pam_u2f.so ] || echo "WARN pam_u2f.so absent -- enrolling anyway, but run bootstrap:pam-u2f once it is installed"
+
+ndev=$(fido2-token -L 2>/dev/null | grep -c . || true)
+if [ "$ndev" -eq 0 ]; then
+  echo "No FIDO2 authenticator found. Plug one in." >&2
+  echo "  (an absent key and an unenrolled key look identical from the lock screen)" >&2
+  exit 1
+fi
+if [ "$ndev" -gt 1 ]; then
+  echo "More than one authenticator is plugged in; pamu2fcfg would choose for you:" >&2
+  fido2-token -L 2>/dev/null | sed 's/^/    /' >&2
+  echo "Leave exactly one connected so you know which key you enrolled." >&2
+  exit 1
+fi
+echo "Enrolling: $(fido2-token -L 2>/dev/null | head -1)"
+
+af="${XDG_CONFIG_HOME:-$HOME/.config}/Yubico/u2f_keys"
+mkdir -p "$(dirname "$af")"
+chmod 700 "$(dirname "$af")"
+
+# -V records +verification on the credential. WITHOUT IT `userverification = 1` in
+# /etc/security/pam_u2f.conf is silently inert: the module asks for UV, the
+# credential cannot provide it, and a bare touch is accepted instead.
+new=$(mktemp)
+if [ -s "$af" ]; then
+  cp -a "$af" "$af.bak.$(date +%Y%m%d%H%M%S)"
+  echo "Backed up existing authfile"
+  # The format is ONE line per user, credentials colon-separated:
+  #   <user>:<handle1>,<key1>,<type1>,<opts1>:<handle2>,...
+  # so an extra key must EXTEND that line, not start a new one -- a line beginning
+  # with ':' matches no user and is ignored in silence. pamu2fcfg emits no trailing
+  # newline, which is what makes -n appendable inline; a hand-edited file may have
+  # gained one, so strip it first.
+  printf '%s' "$(cat "$af")" > "$new"
+  pamu2fcfg -V -n >> "$new"
+else
+  pamu2fcfg -V > "$new"
+fi
+
+# Validate BEFORE replacing the real file, so a half-finished registration cannot
+# cost you credentials you already had.
+python3 - "$new" "$(id -un)" <<'PYEOF'
+import sys
+d = open(sys.argv[1]).read().rstrip("\n")
+if not d:
+    sys.exit("registration produced nothing -- authfile left unchanged")
+if "\n" in d:
+    sys.exit("result spans multiple lines; format is one line per user -- authfile left unchanged")
+user, _, rest = d.partition(":")
+if user != sys.argv[2]:
+    sys.exit(f"username field is {user!r}, expected {sys.argv[2]!r} -- authfile left unchanged")
+creds = [c for c in rest.split(":") if c]
+if not creds:
+    sys.exit("no credentials parsed -- authfile left unchanged")
+for i, c in enumerate(creds, 1):
+    f = c.split(",")
+    if len(f) < 4:
+        sys.exit(f"credential {i} has {len(f)} fields, expected 4 -- authfile left unchanged")
+    if "+verification" not in f[3]:
+        sys.exit(f"credential {i} lacks +verification -- authfile left unchanged")
+print(f"  validated: {len(creds)} credential(s), all carrying +verification")
+PYEOF
+
+install -m 600 "$new" "$af"
+rm -f "$new"
+echo "Enrolled into $af"
+echo "Verify the whole chain:  mise run check:fido2"
+echo "Test without risking a locked screen:  sudo -k && sudo true"
+'''
+
+[tasks."check:fido2"]
+description = "Verify the whole FIDO2 chain: packages, pam_u2f.conf, authselect feature, PAM lines, enrolled credentials, device presence"
+run = '''
+set +e
+fail=0
+say() { printf '%s\n' "$1"; }
+bad() { printf '%s\n' "$1"; fail=1; }
+
+say "Packages:"
+[ -f /usr/lib64/security/pam_u2f.so ] && say "  pam_u2f.so           present" || bad "  pam_u2f.so           MISSING (sudo dnf install -y pam-u2f)"
+command -v pamu2fcfg >/dev/null 2>&1 && say "  pamu2fcfg            present" || bad "  pamu2fcfg            MISSING (sudo dnf install -y pamu2fcfg)"
+command -v fido2-token >/dev/null 2>&1 && say "  fido2-tools          present" || say "  fido2-tools          missing (diagnostics only)"
+
+say "Module config:"
+if [ -f /etc/security/pam_u2f.conf ]; then
+  # Skip comments: pam_u2f.conf's own prose explains userverification=1, so a
+  # bare grep matches twice and $uv ends up holding two lines.
+  uv=$(grep -vE '^[ ]*#' /etc/security/pam_u2f.conf | grep -oE 'userverification[ ]*=[ ]*[0-9]+' | tr -d ' ' | head -1)
+  [ -n "$uv" ] && say "  pam_u2f.conf         $uv" || bad "  pam_u2f.conf         present but sets no userverification"
+else
+  bad "  pam_u2f.conf         MISSING (mise run bootstrap:pam-u2f)"
+fi
+
+say "authselect:"
+cur=$(authselect current 2>/dev/null)
+printf '%s\n' "$cur" | grep -q with-pam-u2f && say "  with-pam-u2f         enabled" || bad "  with-pam-u2f         NOT enabled (mise run bootstrap:pam-u2f)"
+flag=$(chezmoi data 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("fingerprintReader","unknown"))' 2>/dev/null || echo unknown)
+printf '%s\n' "$cur" | grep -q with-fingerprint && live=True || live=False
+if [ "$flag" = "$live" ]; then say "  with-fingerprint     $live (matches fingerprintReader)"
+else bad "  with-fingerprint     $live but fingerprintReader=$flag -- see SETUP.md 2a"; fi
+
+say "PAM lines (must be a bare 'cue'; any inline option overrides pam_u2f.conf):"
+for f in /etc/pam.d/system-auth /etc/pam.d/password-auth; do
+  l=$(grep -h "pam_u2f" "$f" 2>/dev/null)
+  if [ -z "$l" ]; then bad "  $f  no pam_u2f line"
+  elif printf '%s' "$l" | grep -qE 'pam_u2f\.so[ ]+cue[ ]*$'; then say "  $f  ok"
+  else bad "  $f  inline options present: $l"; fi
+done
+
+say "Credentials:"
+af="${XDG_CONFIG_HOME:-$HOME/.config}/Yubico/u2f_keys"
+if [ -s "$af" ]; then
+  python3 - "$af" "$(id -un)" <<'PYEOF'
+import os, sys, stat
+p, want = sys.argv[1], sys.argv[2]
+d = open(p).read().rstrip("\n")
+m = stat.S_IMODE(os.stat(p).st_mode)
+print(f"  authfile             {p} (mode {m:04o})")
+if m & 0o077:
+    print(f"  WARN mode {m:04o} is group/world readable; 0600 expected")
+if "\n" in d:
+    print("  WARN multiple lines -- only the line starting with the username is read;")
+    print("       a line beginning with ':' is ignored in silence")
+user, _, rest = d.partition(":")
+if user != want:
+    print(f"  WARN username field {user!r} != {want!r}; pam_u2f will find no entry")
+creds = [c for c in rest.split(":") if c]
+print(f"  credentials          {len(creds)}")
+for i, c in enumerate(creds, 1):
+    f = c.split(",")
+    opts = f[3] if len(f) > 3 else "(none)"
+    t = f[2] if len(f) > 2 else "?"
+    tail = "" if "+verification" in opts else "   <-- no +verification, UV unenforceable"
+    print(f"    {i}: type={t} opts={opts}{tail}")
+PYEOF
+else
+  bad "  authfile             MISSING or empty (mise run bootstrap:u2f-enroll)"
+fi
+
+say "Devices plugged in now:"
+dl=$(fido2-token -L 2>/dev/null)
+if [ -n "$dl" ]; then printf '%s\n' "$dl" | sed 's/^/  /'; else say "  none (not a fault -- the key need only be present when authenticating)"; fi
+
+say "Lock-screen stack:"
+if [ -f /etc/pam.d/dms-fido2 ]; then
+  grep -q pam_u2f /etc/pam.d/dms-fido2 && say "  dms-fido2 references pam_u2f" || say "  dms-fido2 has no pam_u2f line"
+  # Only failures logged AFTER pam-u2f was installed are meaningful; earlier ones
+  # are the history of the bug being fixed. %{INSTALLTIME} is the install date --
+  # the .so's mtime is the RPM BUILD date and would be far too early.
+  inst=$(rpm -q --qf '%{INSTALLTIME}' pam-u2f 2>/dev/null)
+  case "$inst" in (*[!0-9]*|"") since="7 days ago"; label="in the last 7 days";; (*) since="@$inst"; label="since pam-u2f was installed";; esac
+  n=$(journalctl --user -u dms.service -b 0 --no-pager --since "$since" 2>/dev/null | grep -c "dlopen.*pam_u2f")
+  if [ "${n:-0}" -eq 0 ]; then say "  no dlopen failures $label"; else bad "  $n dlopen failures $label -- module referenced but absent"; fi
+else
+  say "  /etc/pam.d/dms-fido2 not installed (mise run bootstrap:pam-dms)"
+fi
+
+say ""
+if [ "$fail" -eq 0 ]; then say "FIDO2 chain: OK"; else say "FIDO2 chain: PROBLEMS ABOVE"; fi
+exit "$fail"
 '''
 
 [tasks."bootstrap:pam-hyprlock"]

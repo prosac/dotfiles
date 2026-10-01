@@ -177,6 +177,30 @@ packages:
     - network-manager-applet
     - pavucontrol
 
+    # FIDO2 security-key auth (pam_u2f), and the split IS the trap: Fedora ships
+    # the PAM module in `pam-u2f` but the enrolment tool in a separate
+    # `pamu2fcfg` package, so installing only the obvious one leaves you unable
+    # to enrol a key.
+    #
+    # Neither was in this list until 2026-10-01, which is how yoga ended up with
+    # `mise run bootstrap:pam-u2f` having installed /etc/security/pam_u2f.conf and
+    # /etc/pam.d/dms-fido2 referencing a module that was not on the machine. That
+    # fails SILENTLY and degrades instead of erroring: pam_u2f is `sufficient`
+    # everywhere it appears, so the stack just falls through to fingerprint or
+    # password, and the only evidence is the journal line
+    #   PAM unable to dlopen(/usr/lib64/security/pam_u2f.so)
+    # once per unlock -- 96 of them in the week before this was noticed.
+    #
+    # Enrolment stays manual: it needs the physical key and is per machine AND
+    # per key, so it cannot live in a package list.
+    #   pamu2fcfg >> ~/.config/Yubico/u2f_keys     # see bootstrap/SETUP.md 2a
+    - pam-u2f
+    - pamu2fcfg
+    # Diagnostics for the above: `fido2-token -L` is how you tell "no key plugged
+    # in" from "key present but not enrolled", which are the two failure modes
+    # that look identical from the lock screen. check:fido2 shells out to it.
+    - fido2-tools
+
     # Elephant runtime recommends (used by selected providers)
     - bluez
     - fd-find
