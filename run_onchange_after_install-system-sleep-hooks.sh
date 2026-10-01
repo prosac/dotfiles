@@ -15,10 +15,19 @@ case "$1/$2" in
     # Kill WebKit renderer/network processes (GNOME Web, Evolution, some Flatpaks)
     pkill -f "WebKitNetworkProcess" || true
     pkill -f "WebKitWebProcess" || true
-    # Force Hyprland to repaint all windows after GPU processes respawn
+    # Force Hyprland to repaint all windows after GPU processes respawn.
+    # Instances live under $XDG_RUNTIME_DIR/hypr/<sig>/ (not /tmp/hypr, which
+    # only ever held screenshots, so this was a silent no-op until 2026-10).
+    # We run as root: talk to each instance as the user who owns its socket.
     sleep 1
-    HYPRLAND_INSTANCE_SIGNATURE=$(ls /tmp/hypr/ 2>/dev/null | head -1) \
-      hyprctl dispatch forcerendererreload 2>/dev/null || true
+    for sock in /run/user/*/hypr/*/.socket.sock; do
+      [[ -S "$sock" ]] || continue
+      sig_dir=${sock%/.socket.sock}
+      run_dir=${sig_dir%/hypr/*}
+      runuser -u "$(stat -c %U "$sock")" -- env XDG_RUNTIME_DIR="$run_dir" \
+        HYPRLAND_INSTANCE_SIGNATURE="${sig_dir##*/}" \
+        hyprctl dispatch 'hl.dsp.force_renderer_reload()' >/dev/null 2>&1 || true
+    done
     ;;
 esac
 EOF
@@ -492,8 +501,10 @@ def watch():
             if stuck_polls == SETTLE_POLLS:
                 # "card1-eDP-1" -> "eDP-1", the name hyprctl actually takes.
                 outs = [c["name"].split("-", 1)[1] for c in dark]
-                fix = "; ".join(f"hyprctl dispatch dpms off {o}; "
-                                f"hyprctl dispatch dpms on {o}" for o in outs)
+                fix = "; ".join(
+                    f"hyprctl dispatch 'hl.dsp.dpms({{ action = \"disable\", monitor = \"{o}\" }})'; "
+                    f"hyprctl dispatch 'hl.dsp.dpms({{ action = \"enable\", monitor = \"{o}\" }})'"
+                    for o in outs)
                 log(syslog.LOG_WARNING,
                     f"output(s) {' '.join(outs)} stuck dark while {describe(lit)} "
                     f"came back -- modeset likely refused; recover with: {fix}")
