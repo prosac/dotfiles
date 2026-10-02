@@ -71,12 +71,11 @@ source $ZSH/oh-my-zsh.sh
 # You may need to manually set your language environment
 # export LANG=en_US.UTF-8
 
-# Preferred editor for local and remote sessions
-# if [[ -n $SSH_CONNECTION ]]; then
-  export EDITOR='vim'
-# else
-  export EDITOR='emacs'
-# fi
+# Preferred editor: Emacs in *this* terminal, via the server (`-a ''` starts the daemon on first
+# use). A bare `emacs` opens a GUI frame wherever Wayland puts it and blocks the shell meanwhile.
+# VISUAL is what most tools read first; EDITOR is the fallback for the few that only know it.
+export EDITOR="emacsclient -t -a ''"
+export VISUAL="$EDITOR"
 
 # Compilation flags
 # export ARCHFLAGS="-arch x86_64"
