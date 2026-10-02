@@ -18,7 +18,7 @@ by editing the file you were already reading.
 
 Usage:
     handover              list the open ones (says so when there are none)
-    handover <n>          open the n-th in $VISUAL / $EDITOR
+    handover <k>          start a Claude Code session briefed to continue that handover
     handover --motd       same list, but silent when nothing is open — the shell-startup mode.
                           Cannot fail: any error exits 0 with no output, because a broken helper
                           must never be the reason a terminal comes up wrong.
@@ -26,6 +26,7 @@ Usage:
     handover --json       the tracked set as JSON (with paths) — for tooling, not for reading
 
     handover path <k>         print one doc's absolute path and nothing else
+    handover edit <k>         open the doc in $VISUAL / $EDITOR
     handover done <k> [--note TEXT]
                               status: done + closed: today; --note replaces `next:` with where
                               the knowledge now lives
@@ -49,6 +50,7 @@ import argparse
 import datetime
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -240,7 +242,7 @@ def render(items: list[Handover], style: Style, width: int) -> str:
         if item.next_action:
             lines.append(f"     → {item.next_action}")
         lines.append("")
-    lines.append(style.dim("  open with: handover <n>"))
+    lines.append(style.dim("  continue in Claude: handover <n>   ·   edit: handover edit <n>"))
     return "\n".join(lines)
 
 
@@ -315,8 +317,51 @@ def _today() -> str:
 
 
 def open_in_editor(item: Handover) -> int:
-    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "less"
-    return os.spawnvp(os.P_WAIT, editor.split()[0], [*editor.split(), str(item.path)])
+    # shlex, not str.split: `emacsclient -t -a ''` must pass an empty argument, not a literal `''`.
+    editor = shlex.split(os.environ.get("VISUAL") or os.environ.get("EDITOR") or "less")
+    return os.spawnvp(os.P_WAIT, editor[0], [*editor, str(item.path)])
+
+
+def briefing(item: Handover) -> str:
+    """The first prompt of a session that picks this handover up.
+
+    It points at the doc rather than pasting it: the doc is the source of truth and the session
+    should read all of it, not a frontmatter excerpt. The rules it repeats are the ones from
+    ~/CLAUDE.md that a fresh session most often gets wrong.
+    """
+    stem = item.path.stem
+    lines = [
+        f"Continue the open handover `{stem}` ({item.title}).",
+        f"Doc: {item.path} — read all of it first.",
+    ]
+    if item.tickets:
+        lines.append(f"Tickets: {', '.join(item.tickets)}")
+    if item.next_action:
+        lines.append(f"Recorded next action (written {item.age}): {item.next_action}")
+    lines += [
+        "",
+        "Use the finish-handover skill. Before executing `next:`, check it against reality — it may"
+        f' be stale; correct it with `handover next {stem} "<what is actually true>"`.',
+        "Start by telling me where this stands now and the first step you would take.",
+    ]
+    return "\n".join(lines)
+
+
+def start_session(item: Handover) -> int:
+    """Replace this process with `claude`, so the session owns the terminal."""
+    command = ["claude", "--name", f"handover: {item.path.stem}", briefing(item)]
+    if os.environ.get("CLAUDECODE"):
+        # Inside a session already: a nested interactive claude would fight it for the tty.
+        print("handover: already inside Claude Code — run this from a plain terminal", file=sys.stderr)
+        return 2
+    claude = shutil.which("claude")
+    if claude is None:
+        print("handover: `claude` not on PATH — `handover edit` opens the doc instead", file=sys.stderr)
+        return 2
+    # From ~ so ~/CLAUDE.md (the docs index and the handover rules) is loaded.
+    os.chdir(Path.home())
+    os.execv(claude, command)
+    return 0  # unreachable
 
 
 # --- verbs ----------------------------------------------------------------------------------------
@@ -591,14 +636,14 @@ def cmd_json(items: list[Handover]) -> int:
     return 0
 
 
-_VERBS = ("path", "done", "open", "next", "untrack", "rm", "lint")
+_VERBS = ("path", "edit", "done", "open", "next", "untrack", "rm", "lint")
 
 
 def _verb_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="handover", add_help=True)
     sub = parser.add_subparsers(dest="verb", required=True)
     sub.add_parser("lint")
-    for verb in ("path", "open", "untrack"):
+    for verb in ("path", "edit", "open", "untrack"):
         sub.add_parser(verb).add_argument("key")
     p_next = sub.add_parser("next")
     p_next.add_argument("key")
@@ -625,6 +670,8 @@ def _run_verb(args: argparse.Namespace) -> int:
     match args.verb:
         case "path":
             return cmd_path(item)
+        case "edit":
+            return 1 if open_in_editor(item) else 0
         case "done":
             return cmd_done(item, args.note)
         case "open":
@@ -661,11 +708,11 @@ def main(argv: list[str]) -> int:
 
     if positional:
         try:
-            chosen = items[int(positional[0]) - 1]
-        except (ValueError, IndexError):
-            print(f"handover: no such entry {positional[0]!r} (1–{len(items)})", file=sys.stderr)
+            chosen = resolve(positional[0], items)
+        except KeyError as exc:
+            print(f"handover: {exc}", file=sys.stderr)
             return 2
-        return 1 if open_in_editor(chosen) else 0
+        return start_session(chosen)
 
     style = Style(sys.stdout.isatty() and not os.environ.get("NO_COLOR"))
     width = min(os.get_terminal_size().columns if sys.stdout.isatty() else 80, 100)

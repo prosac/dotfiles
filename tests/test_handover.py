@@ -289,5 +289,47 @@ class Surface(HandoverCase):
         self.assertEqual(self.h.cmd_lint(), 0)  # nags, never acts
 
 
+# --- continuing a handover in Claude ------------------------------------------------------
+
+class Continue(HandoverCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.launched: list[tuple[str, list[str]]] = []
+        self.h.os.execv = lambda path, argv: self.launched.append((path, argv))
+        self.h.shutil.which = lambda name: f"/bin/{name}"
+        self.h.os.chdir = lambda path: None
+        os.environ.pop("CLAUDECODE", None)
+
+    def test_an_index_starts_a_named_session_briefed_with_the_doc(self):
+        self.h.main(["handover", "1"])
+
+        (path, argv), = self.launched
+        self.assertEqual(path, "/bin/claude")
+        self.assertEqual(argv[1:3], ["--name", "handover: a-thing"])
+        self.assertIn(str(self.doc), argv[3])
+        self.assertIn("do the thing", argv[3])
+        self.assertIn("CVHERO-1, CVHERO-2", argv[3])
+        self.assertIn("finish-handover", argv[3])
+
+    def test_a_stem_works_too(self):
+        self.h.main(["handover", "a-thing"])
+
+        self.assertEqual(len(self.launched), 1)
+
+    def test_refuses_to_nest_inside_a_running_session(self):
+        os.environ["CLAUDECODE"] = "1"
+        try:
+            self.assertEqual(self.h.main(["handover", "1"]), 2)
+        finally:
+            del os.environ["CLAUDECODE"]
+
+        self.assertEqual(self.launched, [])
+
+    def test_an_unknown_entry_is_an_error_not_a_launch(self):
+        self.assertEqual(self.h.main(["handover", "9"]), 2)
+
+        self.assertEqual(self.launched, [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
