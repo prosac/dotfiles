@@ -80,6 +80,9 @@ SESSION_UNITS=(
   nm-applet.service
   polkit-mate-authentication-agent-1.service
   dotsnap.timer
+  # Pins the Razer Basilisk DPI after every plug-in (openrazer loses it for the
+  # dongle); harmless on a machine without one.
+  razer-dpi.service
 )
 
 for unit in "${SESSION_UNITS[@]}"; do enable_unit "$unit"; done

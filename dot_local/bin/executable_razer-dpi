@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""Pin the Razer Basilisk V3 Pro to one DPI whenever it is attached.
+
+Pointer speed is set ON THE MOUSE (DPI, through the openrazer daemon), not in
+libinput. On Hyprland 0.56.2 a libinput curve is global -- hl.device ignores
+pointer settings and `sensitivity` has no effect -- so scaling the mouse down
+with accel_profile slowed the touchpad too. DPI is per-device by nature.
+
+openrazer's own persistence is not enough: it cannot read the dongle's serial,
+names it UNKNOWN_153200AB_000N with N varying per enumeration, and files the
+saved DPI under that name (2026-10-05: _0000 = 3200, _0001 = 1800). So this
+watches udev `hid` add events and sets DPI itself after every plug-in.
+
+Run by razer-dpi.service. Change the speed by editing DPI below; to try a
+value live:
+  busctl --user call org.razer /org/razer/device/<id> razer.device.dpi setDPI qq 1600 1600
+(<id> from `busctl --user call org.razer /org/razer razer.devices getDevices`).
+See ~/Documents/docs/usb-stutter-fix.md (Razer section).
+"""
+
+import json
+import os
+import re
+import selectors
+import subprocess
+import sys
+import time
+
+# Same feel as the former 3200 DPI x 0.4 libinput curve.
+DPI = 1280
+
+# 1532:00aa wired, 1532:00ab wireless dongle.
+BASILISK_PIDS = {0x00AA, 0x00AB}
+RAZER_VID = 0x1532
+BASILISK_HID = re.compile(r":1532:00A[AB]\.", re.IGNORECASE)
+HID_DEVICES = "/sys/bus/hid/devices"
+
+# A plug event is a burst (the dongle alone brings five HID interfaces), so
+# wait until the stream is quiet before acting.
+SETTLE_SECONDS = 0.5
+# openrazer picks the device up from udev itself; give it time to register.
+OPENRAZER_WAIT_SECONDS = 10
+
+
+def busctl(path: str, interface: str, method: str, *args: str):
+    result = subprocess.run(
+        ["/usr/bin/busctl", "--user", "--json=short", "call", "org.razer",
+         path, interface, method, *args],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip())
+    return json.loads(result.stdout)["data"] if result.stdout.strip() else None
+
+
+def basilisk_attached() -> bool:
+    try:
+        return any(BASILISK_HID.search(n) for n in os.listdir(HID_DEVICES))
+    except OSError:
+        return False
+
+
+def openrazer_basilisks() -> list[str]:
+    paths = []
+    for serial in busctl("/org/razer", "razer.devices", "getDevices")[0]:
+        path = f"/org/razer/device/{serial}"
+        vid, pid = busctl(path, "razer.device.misc", "getVidPid")[0]
+        if vid == RAZER_VID and pid in BASILISK_PIDS:
+            paths.append(path)
+    return paths
+
+
+def pin_dpi() -> None:
+    deadline = time.monotonic() + OPENRAZER_WAIT_SECONDS
+    while True:
+        try:
+            paths = openrazer_basilisks()
+        except RuntimeError as err:
+            paths = []
+            last_error = str(err)
+        else:
+            last_error = "openrazer does not list a Basilisk"
+        if paths or time.monotonic() >= deadline:
+            break
+        time.sleep(1)
+
+    if not paths:
+        print(f"Basilisk attached but not pinned: {last_error}",
+              file=sys.stderr, flush=True)
+        return
+
+    for path in paths:
+        try:
+            current = busctl(path, "razer.device.dpi", "getDPI")[0]
+            if current != [DPI, DPI]:
+                busctl(path, "razer.device.dpi", "setDPI", "qq", str(DPI), str(DPI))
+            print(f"{path.rsplit('/', 1)[1]}: DPI {current} -> {DPI}", flush=True)
+        except RuntimeError as err:
+            print(f"{path}: {err}", file=sys.stderr, flush=True)
+
+
+def main() -> int:
+    udev = subprocess.Popen(
+        ["/usr/bin/udevadm", "monitor", "--udev", "--subsystem-match=hid"],
+        stdout=subprocess.PIPE, text=True, bufsize=1,
+    )
+    sel = selectors.DefaultSelector()
+    sel.register(udev.stdout, selectors.EVENT_READ)
+
+    if basilisk_attached():
+        pin_dpi()
+
+    pending = False
+    while True:
+        events = sel.select(timeout=SETTLE_SECONDS if pending else None)
+        if not events:
+            pending = False
+            if basilisk_attached():
+                pin_dpi()
+            continue
+        line = udev.stdout.readline()
+        if not line:
+            print("udevadm monitor exited", file=sys.stderr)
+            return 1
+        if " add " in line:
+            pending = True
+
+
+if __name__ == "__main__":
+    sys.exit(main())

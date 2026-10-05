@@ -398,35 +398,19 @@ hl.config({
 
 -- Razer Basilisk V3 Pro. DPI is set on the mouse through the openrazer daemon,
 -- which restores it when the daemon starts:
---   busctl --user call org.razer /org/razer/device/PM2625H26302512 razer.device.dpi setDPI qq 3200 3200
+--   busctl --user call org.razer /org/razer/device/<path> razer.device.dpi setDPI qq 3200 3200
+-- (<path> from `busctl --user tree org.razer`; the dongle shows up as
+-- UNKNOWN_153200AB_000N, the wired mouse under its serial PM2625H26302512.)
 -- RazerGenie showed 6400 but never changed the mouse. Tested 2026-09-22 on
 -- 0.56.2: `sensitivity` has NO effect, whether set via hl.device, globally in
--- this file with a reload, or via `hyprctl eval`. `accel_profile` (below) works,
+-- this file with a reload, or via `hyprctl eval`. `accel_profile` works,
 -- including via eval.
 --
--- Pointer speed. The mouse runs at high DPI (3200) and is scaled down with a
--- custom libinput curve: "custom <step> <p0> <p1>" is a straight line, so the
--- last number is a plain speed multiplier (0.4 ≈ 1280 DPI feel, no
--- acceleration). Tune live without reloading:
---   hyprctl eval 'hl.config({ input = { accel_profile = "custom 1 0 0.3" } })'
---
--- ⚠️ The curve is GLOBAL (hl.device silently ignores pointer settings on
--- 0.56.2), so it hits every pointer, touchpads included. It is therefore only
--- applied when a Basilisk V3 Pro (USB 1532:00aa wired / 1532:00ab dongle) is
--- attached when the config loads; on a machine without it -- the laptop's
--- touchpad, any other mouse -- the libinput default stays. Checked at load
--- only: after plugging the mouse in, `hyprctl reload`.
-local function razer_basilisk_attached()
-    local p = io.popen("ls /sys/bus/hid/devices 2>/dev/null")
-    if not p then return false end
-    local list = p:read("*a") or ""
-    p:close()
-    return list:find(":1532:00A[AB]%.") ~= nil
-end
-
-if razer_basilisk_attached() then
-    hl.config({ input = { accel_profile = "custom 1 0 0.4" } })
-end
+-- Pointer speed is set ON THE MOUSE, not here: 1280 DPI with the libinput
+-- default curve, pinned after every plug-in by ~/.local/bin/razer-dpi
+-- (razer-dpi.service). Until 2026-10-05 the mouse ran at 3200 DPI scaled by a
+-- custom accel_profile. That curve is global (hl.device ignores pointer settings),
+-- so it slowed the touchpad too. Do not reintroduce a global accel_profile.
 
 
 ---------------------

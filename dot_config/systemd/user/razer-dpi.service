@@ -1,0 +1,17 @@
+[Unit]
+Description=Pin the Razer Basilisk DPI on every plug-in (openrazer)
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+ConditionEnvironment=|XDG_CURRENT_DESKTOP=Hyprland
+ConditionEnvironment=|XDG_CURRENT_DESKTOP=niri
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/razer-dpi
+Restart=on-failure
+RestartSec=2
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target
