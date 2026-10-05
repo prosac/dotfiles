@@ -93,7 +93,15 @@ reach DMS's lock screen. There is no second ext-session-lock client to race.
    -> packages.dnfExclude), so the templates are stopped twice: no switch and
    no binary.
 
-See ~/Documents/docs/hyprland-dms-quickshell-session.md.
+4. RESIZE ON BORDER — DMS owns it.
+
+   DMS regenerates ~/.config/hypr/dms/layout.lua on every start, and
+   hyprland.lua loads that file last, so DMS's `resize_on_border` overrides
+   ours. Its default is false (hyprlandResizeOnBorder in SettingsSpec.js), so
+   without this key, dragging window borders stops working after every login
+   (2026-10-02, again 2026-10-05). Editing layout.lua by hand does not survive.
+
+See ~/Documents/docs/hyprland-dms-session.md.
 
 */ -}}
 {
@@ -115,5 +123,7 @@ See ~/Documents/docs/hyprland-dms-quickshell-session.md.
   "lockBeforeSuspend": true,
 
   "runDmsMatugenTemplates": false,
-  "runUserMatugenTemplates": false
+  "runUserMatugenTemplates": false,
+
+  "hyprlandResizeOnBorder": true
 }
