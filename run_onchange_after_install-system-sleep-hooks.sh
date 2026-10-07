@@ -228,6 +228,28 @@ OLD_DRM_HOOK=/usr/lib/systemd/system-sleep/drm-debug-resume-capture
 DRM_HOOK=/usr/lib/systemd/system-sleep/drm-debug-modeset-capture
 DRM_UNIT=/etc/systemd/system/drm-debug-modeset-watch.service
 
+# The bug being traced is amdgpu's (it refuses the modeset with no log line), so
+# the capture only goes where amdgpu drives a display. Anywhere else it is a
+# poller with nothing to catch, and this removes it instead.
+has_amdgpu() {
+  local drv
+  for drv in /sys/class/drm/card[0-9]*/device/driver; do
+    [[ "$(basename "$(readlink -f "$drv")")" == amdgpu ]] && return 0
+  done
+  return 1
+}
+
+# The old resume-only name would otherwise keep running alongside the new one
+# and fight it for ownership of drm.debug.
+[[ -f "$OLD_DRM_HOOK" ]] && sudo rm -f "$OLD_DRM_HOOK"
+
+if ! has_amdgpu; then
+  sudo systemctl disable --now drm-debug-modeset-watch.service 2>/dev/null || true
+  sudo rm -f "$DRM_HOOK" "$DRM_UNIT"
+  sudo systemctl daemon-reload
+  echo "==> No amdgpu display here: removed $DRM_HOOK and $DRM_UNIT"
+else
+
 sudo tee "$DRM_HOOK" > /dev/null << 'EOF'
 #!/usr/bin/env python3
 """Arm drm.debug across every window in which a modeset may be attempted, so
@@ -611,10 +633,6 @@ EOF
 
 sudo chmod +x "$DRM_HOOK"
 
-# The old resume-only name would otherwise keep running alongside the new one
-# and fight it for ownership of drm.debug.
-[[ -f "$OLD_DRM_HOOK" ]] && sudo rm -f "$OLD_DRM_HOOK"
-
 sudo tee "$DRM_UNIT" > /dev/null << EOF
 [Unit]
 Description=Arm drm.debug around idle DPMS transitions to capture refused modesets
@@ -648,3 +666,5 @@ sudo systemctl enable drm-debug-modeset-watch.service
 sudo systemctl restart drm-debug-modeset-watch.service
 
 echo "==> Installed $DRM_HOOK (sleep hook + $DRM_UNIT watch)"
+
+fi
