@@ -11,6 +11,12 @@ names it UNKNOWN_153200AB_000N with N varying per enumeration, and files the
 saved DPI under that name (2026-10-05: _0000 = 3200, _0001 = 1800). So this
 watches udev `hid` add events and sets DPI itself after every plug-in.
 
+It always writes, never trusting getDPI: over the dongle getDPI returns
+openrazer's stored value, not the mouse's. After a resume (2026-10-08) it read
+1280 while the mouse ran at its onboard stage, so a skipped write left it too
+fast. A [0, 0] read means the mouse is not answering yet (still asleep), and a
+write then is lost, so wait for a real read first.
+
 Run by razer-dpi.service. Change the speed by editing DPI below; to try a
 value live:
   busctl --user call org.razer /org/razer/device/<id> razer.device.dpi setDPI qq 1600 1600
@@ -40,6 +46,8 @@ HID_DEVICES = "/sys/bus/hid/devices"
 SETTLE_SECONDS = 0.5
 # openrazer picks the device up from udev itself; give it time to register.
 OPENRAZER_WAIT_SECONDS = 10
+# How long to wait for a mouse that reads [0, 0] (asleep) to answer.
+AWAKE_WAIT_SECONDS = 30
 
 
 def busctl(path: str, interface: str, method: str, *args: str):
@@ -91,12 +99,20 @@ def pin_dpi() -> None:
 
     for path in paths:
         try:
-            current = busctl(path, "razer.device.dpi", "getDPI")[0]
-            if current != [DPI, DPI]:
-                busctl(path, "razer.device.dpi", "setDPI", "qq", str(DPI), str(DPI))
+            current = read_dpi_when_awake(path)
+            busctl(path, "razer.device.dpi", "setDPI", "qq", str(DPI), str(DPI))
             print(f"{path.rsplit('/', 1)[1]}: DPI {current} -> {DPI}", flush=True)
         except RuntimeError as err:
             print(f"{path}: {err}", file=sys.stderr, flush=True)
+
+
+def read_dpi_when_awake(path: str) -> list[int]:
+    deadline = time.monotonic() + AWAKE_WAIT_SECONDS
+    while True:
+        current = busctl(path, "razer.device.dpi", "getDPI")[0]
+        if current != [0, 0] or time.monotonic() >= deadline:
+            return current
+        time.sleep(1)
 
 
 def main() -> int:
