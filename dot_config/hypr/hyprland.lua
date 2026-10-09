@@ -525,9 +525,22 @@ end
 hl.bind(key("S"),         hl.dsp.workspace.toggle_special("magic"))
 hl.bind(key("SHIFT + S"), hl.dsp.window.move({ workspace = "special:magic" }))
 
--- Scroll through existing workspaces with mainMod + scroll
-hl.bind(key("mouse_down"), hl.dsp.focus({ workspace = "e+1" }))
-hl.bind(key("mouse_up"),   hl.dsp.focus({ workspace = "e-1" }))
+-- Screen magnifier (for presenting): mainMod + scroll zooms around the cursor,
+-- mainMod + middle-click resets. Built-in cursor zoom, no plugin; it shows in a
+-- full-monitor screen share but NOT in a single-window share. `jq` gets the new
+-- factor from the current one; zooming out stops at 1.
+local function zoom(jq_expr)
+    return hl.dsp.exec_cmd(
+        "hyprctl eval \"hl.config({ cursor = { zoom_factor = "
+        .. "$(hyprctl getoption cursor:zoom_factor -j | jq '" .. jq_expr .. "') } })\"")
+end
+hl.bind(key("mouse_up"),   zoom(".float * 1.25"))
+hl.bind(key("mouse_down"), zoom("[.float / 1.25, 1] | max"))
+hl.bind(key("mouse:274"),  zoom("1"))
+
+-- Screen annotation (wayscriber, runs as wayscriber.service): mainMod + B toggles
+-- the overlay. Not CTRL+B: that would take the tmux prefix and bold from every app.
+hl.bind(key("B"), hl.dsp.exec_cmd("wayscriber --daemon-toggle"))
 
 -- Move/resize windows with mainMod + LMB/RMB and dragging
 hl.bind(key("mouse:272"), hl.dsp.window.drag(),   { mouse = true })
