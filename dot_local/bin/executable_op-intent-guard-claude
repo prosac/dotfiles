@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Claude Code PreToolUse hook (Bash): deny raw `op` secret access, point at op-intent.
+
+1Password's prompt names neither the item nor the purpose, and one approval covers the
+terminal for 10 idle minutes, so an agent's later `op read` gets no prompt at all.
+`op-intent run <Intent> --env <env>` shows the intent, the exact command and the
+references first (~/repos/op-intent). The user's own shell keeps raw `op`.
+
+Inside a sandy sandbox `op` is sandy's shim to the host broker, which enforces the
+session's reference allowlist itself, so the hook stands aside there.
+
+Reads hook JSON on stdin; stdlib only. Anything unexpected lets the command through:
+the hook guards against mistakes, it is not the security boundary.
+"""
+import json
+import os
+import re
+import sys
+
+GUARDED = "read|run|inject|item|document|signin"
+# `op` as a command word (optionally by path), global flags allowed before the verb:
+# `op read …`, `op --cache=false run …`, `/usr/bin/op item get …`, `x && op inject …`.
+RAW_OP = re.compile(
+    rf"(?:^|[\s;&|(`]|\$\()(?:\S*/)?op(?:\s+--?[\w-]+(?:=\S+)?)*\s+(?:{GUARDED})\b"
+)
+
+# Text the shell never executes: the body of a heredoc with a quoted delimiter
+# (<<'EOF'), then single-quoted strings. Commit messages and docs mention `op read`
+# all the time; `"$(op read …)"` in double quotes still runs, so it is still caught.
+QUOTED_HEREDOC = re.compile(r"<<-?\s*(['\"])(\w+)\1.*?^\s*\2\s*$", re.S | re.M)
+SINGLE_QUOTED = re.compile(r"'[^']*'")
+
+
+def executable_text(command: str) -> str:
+    return SINGLE_QUOTED.sub("''", QUOTED_HEREDOC.sub("", command))
+
+
+REASON = (
+    "Raw `op` secret access is blocked for agents: the 1Password prompt does not say what "
+    "is read or why. Use `op-intent run <Intent> --env <env> [-- argv]` (intents: "
+    "`op-intent list`), or `op-intent task <mise-task> --env <env>` for a mise task that "
+    "reads .env.<env>.tpl. If no intent fits, ask the user to add one to "
+    "~/.config/op-intent/intents.toml or the repo's .op-intents.toml. (Text that only "
+    "mentions the CLI belongs in single quotes or a <<'EOF' heredoc, which the hook ignores.)"
+)
+
+
+def main() -> int:
+    if os.environ.get("SANDY_BROKER_SOCKET"):
+        return 0
+    try:
+        data = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        return 0
+    command = (data.get("tool_input") or {}).get("command") or ""
+    if not RAW_OP.search(executable_text(command)):
+        return 0
+    json.dump(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": REASON,
+            }
+        },
+        sys.stdout,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
