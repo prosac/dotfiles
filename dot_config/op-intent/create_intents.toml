@@ -1,0 +1,15 @@
+# op-intent — global intents: what a 1Password secret may be used for, and how.
+# Seeded once by chezmoi (create_), then yours: real op:// references name work vaults and
+# items, so they live here locally or in a repo's .op-intents.toml, never in the public
+# dotfiles. Format and rules: ~/repos/op-intent/README.md.  Check: `op-intent list`.
+#
+# [intent.GatherInfoFromMySQL]
+# why     = "Read replication status of the replica"
+# envs    = ["staging", "production"]
+# command = ["mysql", "-h", "{host}", "-e", "SHOW SLAVE STATUS"]
+#
+# [intent.GatherInfoFromMySQL.secrets]
+# MYSQL_PWD = "op://<vault>-{env}/<item>/password"
+#
+# [intent.GatherInfoFromMySQL.vars.staging]
+# host = "<staging host>"
