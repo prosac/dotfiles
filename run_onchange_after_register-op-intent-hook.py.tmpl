@@ -1,0 +1,27 @@
+{{- if eq (dig "passwordManager" "" .) "1password" -}}
+#!/usr/bin/env python3
+"""Register ~/.local/bin/op-intent-guard-claude as a Claude Code PreToolUse(Bash) hook.
+
+~/.claude/settings.json is not chezmoi-managed (Claude Code rewrites it), so this adds the
+one entry idempotently instead of owning the file. Gated on passwordManager = 1password:
+the hook is about the 1Password CLI. The guard's own docs: ~/repos/op-intent/README.md.
+"""
+import json
+from pathlib import Path
+
+SETTINGS = Path.home() / ".claude" / "settings.json"
+HOOK = str(Path.home() / ".local" / "bin" / "op-intent-guard-claude")
+
+if not SETTINGS.parent.is_dir():
+    raise SystemExit(0)  # no Claude Code on this machine
+settings = json.loads(SETTINGS.read_text()) if SETTINGS.is_file() else {}
+pre = settings.setdefault("hooks", {}).setdefault("PreToolUse", [])
+bash = next((e for e in pre if e.get("matcher") == "Bash"), None)
+if bash is None:
+    bash = {"matcher": "Bash", "hooks": []}
+    pre.append(bash)
+if not any(h.get("command") == HOOK for h in bash.setdefault("hooks", [])):
+    bash["hooks"].append({"type": "command", "command": HOOK})
+    SETTINGS.write_text(json.dumps(settings, indent=2) + "\n")
+    print(f"registered {HOOK} in {SETTINGS}")
+{{- end }}
