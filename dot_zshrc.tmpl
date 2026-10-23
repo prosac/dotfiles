@@ -188,6 +188,35 @@ if [[ -o interactive && $SHLVL -eq 1 && -z "$TMUX" && -z "$INSIDE_EMACS" ]]; the
   "$HOME/.local/bin/handover" --motd
 fi
 
+# --- handover: no history expansion inside its arguments ---------------------
+# Handover notes cite MRs GitLab-style (`grafana !12`), and in zsh `!12` inside
+# double quotes is history entry 12. A copied `handover done … --note "…"` once
+# came out as the first commands this machine ever ran. Turning `banghist` off
+# in the widget is too late (zsh decides when the line starts), so this
+# backslash-escapes every `!` outside single quotes before accepting the line.
+# It covers pasted lines (bracketed paste does not fire magic-space); a `!12 `
+# typed by hand is still expanded on the space, where you see it happen.
+_handover_bang_guard() {
+  emulate -L zsh
+  if [[ $BUFFER == handover(|[[:space:]]*) ]]; then
+    local out= c q= esc=
+    for c in ${(s::)BUFFER}; do
+      if [[ -n $esc ]]; then esc=; out+=$c; continue; fi
+      if [[ $q == "'" ]]; then [[ $c == "'" ]] && q=; out+=$c; continue; fi
+      case $c in
+        '\') esc=1 ;;
+        "'") [[ -z $q ]] && q="'" ;;
+        '"') [[ -z $q ]] && q='"' || q= ;;
+        '!') out+='\' ;;
+      esac
+      out+=$c
+    done
+    BUFFER=$out
+  fi
+  zle .accept-line
+}
+zle -N accept-line _handover_bang_guard
+
 {{ if eq .machineRole "work" -}}
 # AsyncAPI CLI autocomplete (work-only tooling). Setup path is written by the
 # asyncapi CLI installer; source it if present.
