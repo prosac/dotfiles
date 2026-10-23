@@ -124,8 +124,8 @@ rescue JSON::ParserError
 end
 
 # Opacity for the neutral / no-project state ($HOME etc.) — "ghostly when idle".
-IDLE_ALPHA = 0.85
-IDLE_ALPHA_INACTIVE = 0.72
+IDLE_ALPHA = 0.97
+IDLE_ALPHA_INACTIVE = 0.94
 
 # Set Hyprland window props. NB: for color props, -1 restores the global
 # default; for opacity, -1 is taken literally and clamps to 0 (invisible!), so

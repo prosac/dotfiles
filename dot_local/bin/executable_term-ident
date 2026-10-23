@@ -48,6 +48,12 @@ import zlib
 
 TTY = os.environ.get("TERM_IDENT_TTY", "/dev/tty")
 
+# Background tint on/off. Off = the terminal keeps its own theme background
+# (set_bg sends OSC 111 instead, so an already-tinted window clears on its next
+# update); the border, glyph and statusline accent are unaffected.
+# Off since 2026-10-06: trying the plain terminal colors for a while.
+TINT_BG = False
+
 # Per-session records, keyed by tty. Shares the directory term-ident-claude uses
 # for its per-session statusline files; tmpfs, so it clears itself on logout.
 STATE_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "term-ident")
@@ -174,7 +180,7 @@ def _have(cmd: str) -> bool:
 
 # Opacity for the neutral / no-project state ($HOME etc.) — a "ghostly when
 # idle" cue. In a project the window is opaque (props reset to the global 1.0).
-IDLE_ALPHA, IDLE_ALPHA_INACTIVE = 0.85, 0.72
+IDLE_ALPHA, IDLE_ALPHA_INACTIVE = 0.97, 0.94
 
 
 def _setprop(addr: str, **props: object) -> None:
@@ -225,6 +231,9 @@ def write_tty(seq: str, tty: str | None = None) -> None:
 
 
 def set_bg(hex6: str, tty: str | None = None) -> None:
+    if not TINT_BG:
+        reset_bg(tty)
+        return
     write_tty(f"\033]11;#{hex6}\033\\", tty)   # OSC 11 — set background
 
 
