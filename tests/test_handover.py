@@ -9,7 +9,9 @@ Run: python3 tests/test_handover.py   (or `mise run ch:test`)
 
 from __future__ import annotations
 
+import contextlib
 import datetime
+import io
 import importlib.util
 import os
 import sys
@@ -137,6 +139,24 @@ class Resolve(HandoverCase):
         with self.assertRaises(KeyError):
             self.h.resolve("nope", items)
 
+    def test_a_listed_number_names_the_same_doc_for_every_verb(self):
+        """`handover done 8` once closed a different doc than the listing's 8.
+
+        The listing numbered open docs only; the verbs and `--json` numbered open and done docs
+        interleaved by recency, so a doc closed more recently shifted every number after it.
+        """
+        older = self.docs / "older-open.md"
+        older.write_text(DOC.replace("updated: 2026-01-01", "updated: 2025-06-01"))
+        closed = self.docs / "just-closed.md"
+        closed.write_text(DOC.replace("status: open", "status: done").replace("2026-01-01", "2026-09-01"))
+
+        listed = self.h.collect()
+        everything = self.h.collect(include_done=True)
+
+        for number, item in enumerate(listed, start=1):
+            self.assertEqual(self.h.resolve(str(number), everything).path, item.path)
+        self.assertEqual(everything[-1].path, closed)
+
 
 # --- verbs ------------------------------------------------------------------------------
 
@@ -184,6 +204,28 @@ class Verbs(HandoverCase):
         self.assertIn("publish: false\n", text)
         self.assertIn("tags: [a, b]\n", text)
         self.assertIn("Body text that must survive verbatim.", text)
+
+    def test_a_multi_line_note_is_refused_and_the_doc_stays_open(self):
+        """The shape a zsh history expansion leaves: `!12` became a multi-line old command."""
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = self.h.main(["handover", "done", "a-thing", "--note", "grafana mkdir -p x\ncurl y"])
+
+        self.assertEqual(code, 2)
+        self.assertEqual(self.h.read_front_matter(self.doc)["status"], "open")
+        self.assertIn("history entry", err.getvalue())
+
+    def test_a_multi_line_next_is_refused(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            code = self.h.main(["handover", "next", "a-thing", "one\ntwo"])
+
+        self.assertEqual(code, 2)
+        self.assertEqual(self.h.read_front_matter(self.doc)["next"], "do the thing")
+
+    def test_a_literal_bang_survives_into_the_note(self):
+        self.assertEqual(self.h.main(["handover", "done", "a-thing", "--note", "grafana !12, lde !"]), 0)
+
+        self.assertEqual(self.h.read_front_matter(self.doc)["next"], "grafana !12, lde !")
 
     def test_untrack_removes_the_block_when_nothing_else_is_left(self):
         """A doc whose frontmatter was only handover keys should not keep a bare `---\\n---`."""
@@ -281,6 +323,14 @@ class Surface(HandoverCase):
         (self.docs / "broken.md").write_text("---\nstatus: open\n")  # never closes
 
         self.assertEqual(self.h.main(["handover", "--motd"]), 0)
+
+    def test_help_prints_the_usage_instead_of_the_listing(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(self.h.main(["handover", "--help"]), 0)
+
+        self.assertIn("Usage:", out.getvalue())
+        self.assertNotIn("the thing", out.getvalue())  # the doc's title: no listing
 
     def test_an_unknown_status_is_invisible_and_lint_says_so(self):
         self.doc.write_text(DOC.replace("status: open", "status: partial"))
