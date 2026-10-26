@@ -1,0 +1,8 @@
+# npm-registry-auth — which registry tokens ~/.local/wrappers/{pnpm,corepack} read from
+# 1Password. Seeded once by chezmoi (create_), then yours: a reference names a work vault
+# and item, so it lives here locally, never in the public dotfiles.
+#
+# [registries]
+# "<registry host>" = "op://<vault>/<item>/credential"
+
+[registries]
