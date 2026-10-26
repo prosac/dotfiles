@@ -74,7 +74,7 @@
 # The FIDO2 stick still unlocks, and still with a bare touch rather than an extra
 # keypress: DMS is pointed at /etc/pam.d/dms-fido2 as its *primary* PAM stack
 # (`pam_u2f sufficient` + `pam_unix required`), which arms the key the moment the
-# screen locks. See dot_config/DankMaterialShell/create_settings.json.tmpl and
+# screen locks. See dot_config/dms/create_private_settings.json.tmpl and
 # bootstrap/pam/dms-fido2 — including the one silent failure mode, where an
 # unreadable PAM file degrades DMS to the `login` service.
 #
