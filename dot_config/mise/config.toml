@@ -513,9 +513,10 @@ echo "Failed state cleared — it should stay clean from the next boot on."
 # .zshrc runs `starship init zsh` unconditionally, so the shim dir being first
 # on PATH is what makes this work on first login.
 [tools]
-argocd = "3.1"
-go = "1.26.0"
-node = "24.14.0"
-nsc = "2.12.0"
-starship = "1.26.0"
-usage = "2.13.1"
+argocd = "3.5"
+go = "1.27.3"
+node = "26.12.1"
+nsc = "2.15.0"
+pnpm = "12.15.0"
+starship = "1.27.0"
+usage = "7.1.2"
