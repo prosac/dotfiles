@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""pnpm/corepack wrapper: npm registry tokens from the password manager, per invocation.
+
+~/.local/wrappers/{pnpm,corepack} are symlinks to this script, and that directory is the
+first entry on PATH (.zshrc), ahead of mise's shims and of the tool dirs `mise run`
+inserts in their place. For each registry host in the config below the script reads the
+token from 1Password and exports it to this one process as
+
+    npm_config_//<host>/:_authToken
+
+then execs the real binary further down PATH. Nothing is written to disk. The host-only
+key covers every registry path on that host; pnpm 12.14 sends it from the environment
+but refuses `${VAR}` in a repository's .npmrc (measured 2026-10-26). `corepack pnpm`
+needs the corepack wrapper: corepack starts pnpm through node, not through PATH.
+
+Config: ~/.config/npm-registry-auth/registries.toml, a [registries] table mapping host
+to op:// reference. It is local because a reference names a work vault and item.
+
+A variable that is already set wins (a sandbox, `op run`, a parent pnpm), so nested
+calls cost no second read. If a read fails, the tool runs without that token and says so,
+which leaves an existing ~/.npmrc in charge. The token is never printed.
+"""
+import os
+import subprocess
+import sys
+import tomllib
+
+CONFIG = os.path.expanduser("~/.config/npm-registry-auth/registries.toml")
+# A locked 1Password asks to be unlocked; an unanswered prompt must not hang pnpm forever.
+TIMEOUT = 60
+NAME = os.path.basename(sys.argv[0])
+
+
+def warn(msg):
+    print(f"{NAME} wrapper: {msg}", file=sys.stderr)
+
+
+def real_binary():
+    me = os.path.realpath(__file__)
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        cand = os.path.join(d, NAME)
+        if os.path.isfile(cand) and os.access(cand, os.X_OK) and os.path.realpath(cand) != me:
+            return cand
+    sys.exit(f"{NAME} wrapper: no real {NAME} found on PATH")
+
+
+def registries():
+    try:
+        with open(CONFIG, "rb") as f:
+            return tomllib.load(f).get("registries", {})
+    except FileNotFoundError:
+        return {}
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        warn(f"cannot read {CONFIG} ({e}); continuing without registry tokens")
+        return {}
+
+
+def read_secret(host, ref):
+    try:
+        r = subprocess.run(["op", "read", "--no-newline", ref], capture_output=True,
+                           text=True, timeout=TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        warn(f"cannot read the {host} token from 1Password ({type(e).__name__}); "
+             "continuing without one")
+        return None
+    if r.returncode != 0 or not r.stdout.strip():
+        warn(f"no {host} token from 1Password ({r.stderr.strip() or 'empty'}); "
+             "continuing without one")
+        return None
+    return r.stdout.strip()
+
+
+def main():
+    env = dict(os.environ)
+    for host, ref in registries().items():
+        key = f"npm_config_//{host}/:_authToken"
+        if env.get(key):
+            continue
+        token = read_secret(host, ref)
+        if token:
+            env[key] = token
+    binary = real_binary()
+    os.execve(binary, [binary, *sys.argv[1:]], env)
+
+
+if __name__ == "__main__":
+    main()

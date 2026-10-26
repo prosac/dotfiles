@@ -60,4 +60,7 @@ tests
 .local/bin/docker-credential-op
 .config/containers/auth.json
 .local/bin/glab
+.local/bin/npm-registry-auth
+.local/wrappers
+.config/npm-registry-auth
 {{- end }}

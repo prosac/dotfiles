@@ -141,6 +141,13 @@ case ":$PATH:" in
 esac
 # pnpm end
 
+{{- /* npm registry tokens from 1Password, per call (~/.local/bin/npm-registry-auth).
+       Last PATH prepend on purpose: these wrappers must shadow mise's shims and the
+       tool dirs `mise run` puts in their place. */}}
+{{- if eq (dig "passwordManager" "none" .) "1password" }}
+export PATH="$HOME/.local/wrappers:$PATH"
+{{- end }}
+
 # --- terminal visual identity (term-ident) -----------------------------------
 # Color each ghostty window by its project (git toplevel) so parallel terminals
 # are recognizable at a glance. Claude Code sessions override this per-session
