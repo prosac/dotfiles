@@ -396,11 +396,16 @@ def kernel_lines(since):
 def scan(since):
     """Report whether the captured window contains a rejected commit."""
     lines = kernel_lines(since)
+    # Only DRM lines that report a failure. With drm.debug=0x14 every commit
+    # logs "[drm:drm_atomic_check_only] checking ...", so matching
+    # "atomic_check" alone flagged every window (2,479 false verdicts by
+    # 2026-10-27).
     hits = [ln for ln in lines
-            if "*ERROR*" in ln or "atomic_check" in ln.lower()]
+            if ("[drm" in ln or "amdgpu" in ln)
+            and ("*ERROR*" in ln or "fail" in ln.lower())]
     if hits:
         log(syslog.LOG_WARNING,
-            f"{len(hits)} DRM error/atomic_check lines in the window -- "
+            f"{len(hits)} DRM error/failure lines in the window -- "
             f"trace: journalctl -k --since @{since}")
         log(syslog.LOG_WARNING, f"first: {hits[0][-200:]}")
     else:
@@ -459,17 +464,40 @@ def describe(conns):
                     if c["status"] == "connected")
 
 
+def session_locked():
+    """LockedHint of seat0's active session (DMS sets it). Unknown -> False,
+    so a broken lookup degrades to the old, noisy behaviour, not to silence."""
+    def prop(args):
+        return subprocess.run(["loginctl", *args], check=False,
+                              capture_output=True, text=True).stdout.strip()
+    sid = prop(["show-seat", "seat0", "-p", "ActiveSession", "--value"])
+    if not sid:
+        return False
+    return prop(["show-session", sid, "-p", "LockedHint", "--value"]) == "yes"
+
+
 def watch():
     """Arm around every DPMS-off -> DPMS-on transition on a connected output.
 
     The window opens when a connected output stops being lit and closes
     DISARM_DELAY seconds after every connected output is lit again. If one
-    output comes back and another stays dark, that IS the failure -- the window
-    is closed immediately so the trace is scanned while it is fresh, and the
-    verdict names the recovery command.
+    output stays dark while another is lit AND the session is unlocked, that
+    IS the failure -- the window is closed immediately so the trace is scanned
+    while it is fresh, and the verdict names the recovery command.
+
+    ⚠️ While the session is locked, eDP-1 dark + HDMI lit is normal here; the
+    first version called that a failure every 12 s (2,479 times by 10-27). So
+    the verdict waits for the unlock, and the window stays open across the lock
+    to capture the wake commit. After a verdict or a volume-valve trip the
+    watcher stays latched until every output is lit again, instead of
+    re-arming into the same state.
     """
     log(syslog.LOG_INFO, "watching DRM connectors for DPMS transitions")
+    # A previous instance killed while armed (restart, stop) leaves drm.debug
+    # on and its state file behind; arm() would then decline forever.
+    disarm("idle-dpms")
     armed = False
+    latched = False
     dark_since = None
     lit_since = None
     stuck_polls = 0
@@ -486,7 +514,10 @@ def watch():
         lit = [c for c in live if is_lit(c)]
         now = time.time()
 
-        if dark and not armed:
+        if not dark:
+            latched = False
+
+        if dark and not armed and not latched:
             dark_since = dark_since or now
             if now - dark_since >= SETTLE_POLLS * POLL_INTERVAL:
                 if arm("idle-dpms"):
@@ -495,8 +526,9 @@ def watch():
         elif not dark:
             dark_since = None
 
-        # The failure signature: one connected output lit, another stuck dark.
-        if armed and lit and dark:
+        # The failure signature: one connected output lit, another stuck dark,
+        # while the user can see it (unlocked).
+        if armed and lit and dark and not session_locked():
             stuck_polls += 1
             if stuck_polls == SETTLE_POLLS:
                 # "card1-eDP-1" -> "eDP-1", the name hyprctl actually takes.
@@ -510,6 +542,7 @@ def watch():
                     f"came back -- modeset likely refused; recover with: {fix}")
                 disarm("idle-dpms")
                 armed = False
+                latched = True
                 stuck_polls = 0
                 lit_since = None
                 time.sleep(POLL_INTERVAL)
@@ -539,6 +572,7 @@ def watch():
                         f"-- disarming early to protect the journal")
                     disarm("idle-dpms")
                     armed = False
+                    latched = True
 
         time.sleep(POLL_INTERVAL)
 
@@ -609,6 +643,8 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now drm-debug-modeset-watch.service
+sudo systemctl enable drm-debug-modeset-watch.service
+# restart, not enable --now: a running watcher keeps the old code loaded.
+sudo systemctl restart drm-debug-modeset-watch.service
 
 echo "==> Installed $DRM_HOOK (sleep hook + $DRM_UNIT watch)"
