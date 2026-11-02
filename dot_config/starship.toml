@@ -19,7 +19,6 @@ $julia\
 $nodejs\
 $nim\
 $python\
-$conda\
 $rust\
 $scala\
 [](fg:#86BBD8 bg:#06969A)\
@@ -78,10 +77,6 @@ truncation_symbol = "…/"
 symbol = " "
 style = "bg:#86BBD8"
 format = '[ $symbol ($version) ]($style)'
-
-[conda]
-style = "bg:#86BBD8"
-format = '[$symbol$environment]($style)'
 
 [docker_context]
 symbol = " "
@@ -143,7 +138,6 @@ format = '[ $symbol ($version) ]($style)'
 
 [python]
 symbol = '🐍 '
-pyenv_version_name = true
 style = "fg:#2D2D2D bg:#86BBD8"
 format = '[${symbol}(${version}($style) )(\($virtualenv\) )]($style)'
 
