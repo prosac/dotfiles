@@ -107,6 +107,23 @@ alias f='fzf'
 # GUI. Gated on the passwordManager prompt so 1password machines never get a
 # dead alias pointing at a flatpak they do not have.
 alias bw="flatpak run --command=bw com.bitwarden.desktop"
+
+# Bitwarden's SSH agent. The flatpak keeps its data dir on the host filesystem,
+# so the socket is reachable without any flatpak override -- nothing to punch
+# through the sandbox. Only export it if it actually exists, so a machine where
+# the desktop app has never run does not end up with a dead SSH_AUTH_SOCK that
+# makes every ssh invocation wait on a socket nobody is serving.
+#
+# This is what signs git commits: `ssh-keygen -Y sign -f <pubkey>` falls back to
+# the agent when the private half is not on disk, so no gpg.ssh.program override
+# is needed (unlike 1password, which needs op-ssh-sign).
+#
+# SSH *authentication* deliberately does not use this: the host blocks in
+# ~/.ssh/config set `IdentityAgent none` with `IdentitiesOnly yes`, so logins
+# keep using the FIDO2 tokens. Agent = signing, tokens = access.
+_bw_agent="$HOME/.var/app/com.bitwarden.desktop/data/.bitwarden-ssh-agent.sock"
+[ -S "$_bw_agent" ] && export SSH_AUTH_SOCK="$_bw_agent"
+unset _bw_agent
 {{- end }}
 
 # Pin the terminal window title (shown in ghostty's title bar): `settitle <text>`.
