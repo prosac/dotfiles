@@ -114,7 +114,12 @@ Three session entries land at the greeter. The two Hyprland ones share one `hypr
 
 ## History
 
-- **2024** — just a `.zshrc`, a `.zprofile` and a starship prompt.
+- **Ancient times – 2024** — many years of different Linux desktops and tiling
+  window managers such as i3, and never much discipline about keeping the
+  dotfiles organised. Most of the ideas and decisions collected here come from
+  that time; what is new is writing them down in one place and managing them
+  with chezmoi. In 2024 this repo held just a `.zshrc`, a `.zprofile` and a
+  starship prompt.
 - **April 2026** — rebuilt on chezmoi around Hyprland with waybar, first with fuzzel
   as the launcher, then walker + elephant.
 - **June 2026** — a niri session alongside Hyprland, sharing the same daemons.
