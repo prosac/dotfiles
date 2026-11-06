@@ -41,7 +41,7 @@ DOC = """---
 publish: false
 title: A thing
 status: open
-tickets: [CVHERO-1, CVHERO-2]
+tickets: [PROJ-1, PROJ-2]
 next: "do the thing"
 short: "the thing"
 updated: 2026-01-01
@@ -358,7 +358,7 @@ class Continue(HandoverCase):
         self.assertEqual(argv[1:3], ["--name", "handover: a-thing"])
         self.assertIn(str(self.doc), argv[3])
         self.assertIn("do the thing", argv[3])
-        self.assertIn("CVHERO-1, CVHERO-2", argv[3])
+        self.assertIn("PROJ-1, PROJ-2", argv[3])
         self.assertIn("finish-handover", argv[3])
 
     def test_a_stem_works_too(self):

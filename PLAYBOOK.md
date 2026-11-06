@@ -65,7 +65,7 @@ Snapshots run hourly via `dotsnap.timer` (systemd user unit). One week of hourly
 # HTTPS, not SSH: a fresh machine has no key registered with GitHub yet, and
 # 1Password is not set up at this point either. Switch the remote afterwards.
 chezmoi init --apply https://github.com/prosac/dotfiles.git
-chezmoi git -- remote set-url origin git@github.com:prosac/dotfiles.git   # once a key exists
+chezmoi git -- remote set-url origin git@github.com:prosac/dotfiles.git   # owner only, once a key exists
 mise run ch:hooks                 # install pre-commit hook in the cloned source
 ```
 

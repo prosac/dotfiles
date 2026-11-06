@@ -14,7 +14,7 @@ running cluster alone.
 
 Environment:
     KUBECONFIG            defaults to ~/.kube/k3s.yaml — NOT ~/.kube/config, which holds the real
-                          cvh-stage and cvh-production contexts and must never be merged with this
+                          staging and production contexts and must never be merged with this
     K3S_READY_TIMEOUT     seconds to wait before giving up (default 180)
 """
 

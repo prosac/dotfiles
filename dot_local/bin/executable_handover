@@ -10,9 +10,9 @@ by editing the file you were already reading.
 
     ---
     status: open                                  # open | done (anything else = not tracked)
-    tickets: [CVHERO-1992, CVHERO-1987]           # optional
-    next: "merge !127, then measure the stuck rows"   # optional, one line
-    short: "uds-ingestion — page cap & stuck jobs"    # optional, else `title:`, else filename
+    tickets: [PROJ-123, PROJ-124]                 # optional
+    next: "merge !12, then re-run the import"     # optional, one line
+    short: "importer — page cap & stuck jobs"     # optional, else `title:`, else filename
     updated: 2026-08-20                           # optional; else the file mtime
     ---
 

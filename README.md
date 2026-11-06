@@ -9,7 +9,9 @@ Centred on Fedora 42 and 43.
 > These are **my** dotfiles, published so the setup is reproducible on my own
 > machines and readable to anyone who finds a piece of it useful. There is no
 > support promise, and several parts assume my hardware (dual monitor, FIDO2 key,
-> Wacom tablet) or my accounts (1Password). Read before you run.
+> Wacom tablet) or my accounts (1Password). Read before you run. This is not a
+> collaborative project: issues and pull requests are not taken. Fork it or copy
+> what you need.
 
 ## Quick start
 
@@ -67,13 +69,7 @@ Two things worth knowing while you do that:
 
 ### Both paths
 
-Once 1Password (or your SSH key) is set up, switch the remote so you can push:
-
-```sh
-chezmoi git -- remote set-url origin git@github.com:prosac/dotfiles.git
-```
-
-Then continue with **[`bootstrap/SETUP.md`](bootstrap/SETUP.md)** for the one-time
+Continue with **[`bootstrap/SETUP.md`](bootstrap/SETUP.md)** for the one-time
 privileged setup that `chezmoi apply` cannot do on its own: sudoers drop-in, btrfs
 snapshot timer, FIDO2 login, power management, sleep hooks. Snapshots need `/home`
 on btrfs — `findmnt -no FSTYPE --target /home` — and skipping that section on a

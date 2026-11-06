@@ -15,8 +15,9 @@ Then add `~/bin` to `$PATH` if it isn't already (it is, after Step 1 deploys `.z
 chezmoi init --apply https://github.com/prosac/dotfiles.git
 ```
 
-Once 1Password / your SSH key is working (Step 2a), point the remote at SSH so you
-can push: `chezmoi git -- remote set-url origin git@github.com:prosac/dotfiles.git`
+On my own machines, once 1Password is working (Step 2a), I point the remote at SSH:
+`chezmoi git -- remote set-url origin git@github.com:prosac/dotfiles.git`. This repo
+takes no outside pushes or PRs. Anyone else should fork it or copy pieces.
 
 `init` prompts for `name`, `email`, `machineClass` (laptop/desktop), `passwordManager` (`1password`/`bitwarden`/`none` — only `1password` enables SSH-signed commits in `.gitconfig`), and `mailSetup` (bool, default `false` — set `true` to deploy the notmuch + lieer Gmail stack: scripts, systemd timer, Doom `:email notmuch`, lieer venv, mail dnf packages). On `apply`, the `run_onchange_after_install-packages.sh.tmpl` script runs (see Step 4 below) — interactive `sudo` will be required.
 
@@ -112,7 +113,7 @@ fingerprint or password. The only evidence is one journal line per unlock:
 PAM unable to dlopen(/usr/lib64/security/pam_u2f.so)
 ```
 
-yoga ran exactly that way from its F44 rebuild until 2026-10-01 — 96 such lines in
+The second laptop ran exactly that way from its F44 rebuild until 2026-10-01 — 96 such lines in
 the final week — with `/etc/pam.d/dms-fido2` faithfully referencing a module that
 was not on the machine. `bootstrap:pam-u2f` now refuses to run rather than
 configure a stack around an absent module.
@@ -136,7 +137,7 @@ no-reader answer as though there were.
 | `fingerprintReader` | authselect features | resulting auth order |
 |---|---|---|
 | `false` (e.g. bum) | `with-pam-u2f` | u2f → password; the key arms instantly |
-| `true` (e.g. yoga) | `with-pam-u2f` + `with-fingerprint` | fprintd → u2f → password |
+| `true` (e.g. a laptop with a reader) | `with-pam-u2f` + `with-fingerprint` | fprintd → u2f → password |
 
 ⚠️ **Do not enable `with-fingerprint` on a machine with no fprintd device.** It
 inserts `pam_fprintd.so` *ahead* of `pam_u2f.so`, so every authentication
@@ -155,7 +156,7 @@ stays an explicit decision.
 **Neither stick is a fprintd device.** The VeriMark Guard's sensor is on-key FIDO2
 user verification (`fprintd-list` shows "No devices available"), and the TrustKey
 G310 does UV on-key too — enrolling it with `-V` records `+verification` and asks for
-no PIN, despite its `clientPin` option. Only a builtin reader (yoga's Goodix MOC) is
+no PIN, despite its `clientPin` option. Only a builtin reader (e.g. a Goodix MOC) is
 a fprintd device.
 
 ### Enrolment is deliberately NOT managed

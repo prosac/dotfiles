@@ -182,7 +182,7 @@ packages:
     # `pamu2fcfg` package, so installing only the obvious one leaves you unable
     # to enrol a key.
     #
-    # Neither was in this list until 2026-10-01, which is how yoga ended up with
+    # Neither was in this list until 2026-10-01, which is how the second laptop ended up with
     # `mise run bootstrap:pam-u2f` having installed /etc/security/pam_u2f.conf and
     # /etc/pam.d/dms-fido2 referencing a module that was not on the machine. That
     # fails SILENTLY and degrades instead of erroring: pam_u2f is `sufficient`

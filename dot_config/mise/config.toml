@@ -181,7 +181,7 @@ set -e
 # machine provisioned before that entry has neither, and the only evidence is one
 # journal line per unlock:
 #     PAM unable to dlopen(/usr/lib64/security/pam_u2f.so)
-# yoga ran that way from its F44 rebuild until 2026-10-01 (96 lines in one week).
+# The second laptop ran that way from its F44 rebuild until 2026-10-01 (96 lines in one week).
 # Refuse rather than configure a stack around an absent module.
 if [ ! -f /usr/lib64/security/pam_u2f.so ]; then
   echo "pam_u2f.so is NOT installed -- refusing to configure a stack around it." >&2

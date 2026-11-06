@@ -1,6 +1,6 @@
 # Upgrading a Fedora release on these machines
 
-Written after taking `yoga` from Fedora 42 (EOL) to 44 on 2026-09-05. The order below
+Written after taking a second laptop from Fedora 42 (EOL) to 44 on 2026-09-05. The order below
 is the order things actually went wrong in, which is why it is the order to work in.
 
 The compositor stack is the risk, not Fedora. Fedora's own upgrade is boring and well
@@ -80,7 +80,7 @@ is separate from the rpmdb. `rpm --import` is not enough.
 Worse: **`--assumeno` silently declines the key-import prompt.** A dry run then shows a
 repo as present but empty, and every package it should have supplied appears to be
 missing — producing cascading phantom dependency failures three layers away from the
-real cause. On `yoga` this looked like four unrelated problems (a Python 3.13→3.14 ABI
+real cause. On that machine this looked like four unrelated problems (a Python 3.13→3.14 ABI
 chain, a blocked `waypaper` dependency, and an unsatisfiable `terra-release`). All four
 were one missing key.
 
