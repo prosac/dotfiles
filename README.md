@@ -1,10 +1,12 @@
 # Dotfiles
 
 My dotfiles, managed via [`chezmoi`](https://www.chezmoi.io). `zsh` + `oh-my-zsh`,
-`btrfs` snapshots of `$HOME`, and a Hyprland/niri desktop built around `elephant`,
-`walker` and `waybar`, tailored to people who drive a form of `vim` or `emacs` with
+`btrfs` snapshots of `$HOME`, and a Hyprland desktop whose shell (bar, launcher,
+notifications, lock screen, idle handling) is
+[Dux Shell](https://github.com/duxlabs-dev/dux-shell), formerly DankMaterialShell,
+on Quickshell. It is tailored to people who drive a form of `vim` or `emacs` with
 evil-mode (e.g. Doom Emacs). `mise` is the task interface for the whole thing.
-Centred on Fedora 42 and 43.
+Centred on Fedora 43 and 44; 42 still works via fallback paths.
 
 > These are **my** dotfiles, published so the setup is reproducible on my own
 > machines and readable to anyone who finds a piece of it useful. There is no
@@ -86,14 +88,34 @@ non-btrfs machine requires disabling nothing.
 
 ## Sessions
 
-Three session entries land at the greeter, all sharing one `hyprland.lua`:
+Three session entries land at the greeter. The two Hyprland ones share one `hyprland.lua`:
 
-- **Hyprland** — the default: waybar, walker, swayosd, hypridle + hyprlock.
-- **niri** — scrollable tiling, sharing the same daemons via `ConditionEnvironment=` gates.
-- **Hyprland (DMS)** — the same compositor with the entire shell replaced by
-  [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell), including
-  its own lock screen and idle handling. Opt-in: `mise run bootstrap:dms-session`.
-  Verify a session with `mise run check:dms-session`.
+- **Hyprland (DMS)** — what I actually use. Hyprland with the whole shell provided
+  by Dux Shell, including its own lock screen and idle handling. Its Settings UI
+  edits the Lua config directly. Set it up with `mise run bootstrap:dms-session`
+  and verify it with `mise run check:dms-session`. The package, the command
+  and the config directory still carry the old name: `dms`, `~/.config/dms`.
+- **Hyprland** — the original stack: waybar, walker + elephant, swayosd,
+  hypridle + hyprlock. Still installed and still starts, but no longer my daily
+  driver, so expect rough edges.
+- **niri** — scrollable tiling, sharing that original stack's daemons via
+  `ConditionEnvironment=` gates. Same status as plain Hyprland.
+
+## History
+
+- **2024** — just a `.zshrc`, a `.zprofile` and a starship prompt.
+- **April 2026** — rebuilt on chezmoi around Hyprland with waybar, first with fuzzel
+  as the launcher, then walker + elephant.
+- **June 2026** — a niri session alongside Hyprland, sharing the same daemons.
+- **August 2026** — DankMaterialShell arrived as a third, opt-in session and
+  quickly became the one I use. The masks that keep the original stack out of
+  that session date from here.
+- **September 2026** — the Hyprland config moved from `hyprland.conf` to Lua, so
+  the shell's Settings UI can edit it.
+- **October 2026** — DMS 2.0, renamed Dux Shell, moved its config to `~/.config/dms`.
+
+The original waybar/walker stack stays in the repo because it still works and the
+niri session depends on it, not because it gets attention.
 
 ## Caveats worth knowing before you copy anything
 
