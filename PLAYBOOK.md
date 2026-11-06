@@ -149,7 +149,7 @@ Grows as workflows land.
 - **No hardcoded home paths.** Never `/home/<user>` in any committed file.
 - **Per-machine files** go into `.chezmoiignore` (e.g. `monitors.lua`, `workspaces.lua` — managed by nwg-displays per host; `.config/systemd/user/*.wants` — systemd's enable state).
 - **Identity** (name, email) comes from `chezmoi init` prompts, stored in local `~/.config/chezmoi/chezmoi.toml` (never committed). *Stage 3.*
-- **Per-machine opt-ins** also live in those prompts and gate optional stacks. Today: `passwordManager` (`1password`/`bitwarden`/`none`) — only `1password` enables SSH-signed commits in `.gitconfig`; `mailSetup` (bool, default `false`) — gates the notmuch + lieer Gmail stack (Doom `:email notmuch`, `.notmuch-config`, `mail-sync` scripts, systemd timer, lieer venv installer, mail dnf packages). Re-prompt by deleting the relevant line from `~/.config/chezmoi/chezmoi.toml` and re-running `chezmoi init`.
+- **Per-machine opt-ins** also live in those prompts and gate optional stacks. Today: `passwordManager` (`1password`/`bitwarden`/`none`) — only `1password` turns commit signing on in `.gitconfig`; with `bitwarden` its SSH agent signs once signing is enabled in `~/.config/git/local.gitconfig`; `mailSetup` (bool, default `false`) — gates the notmuch + lieer Gmail stack (Doom `:email notmuch`, `.notmuch-config`, `mail-sync` scripts, systemd timer, lieer venv installer, mail dnf packages). Re-prompt by deleting the relevant line from `~/.config/chezmoi/chezmoi.toml` and re-running `chezmoi init`.
 - **Repo-only files** (README.md, PLAYBOOK.md, bootstrap/) live at source root and are listed in `.chezmoiignore` so they aren't applied to `~`.
 - **One commit ≈ one logical change.** Don't mix drift-capture and feature additions.
 

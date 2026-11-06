@@ -11,7 +11,7 @@ Centred on Fedora 43 and 44; 42 still works via fallback paths.
 > These are **my** dotfiles, published so the setup is reproducible on my own
 > machines and readable to anyone who finds a piece of it useful. There is no
 > support promise, and several parts assume my hardware (dual monitor, FIDO2 key,
-> Wacom tablet) or my accounts (1Password). Read before you run. This is not a
+> Wacom tablet) or a password manager (1Password or Bitwarden). Read before you run. This is not a
 > collaborative project: issues and pull requests are not taken. Fork it or copy
 > what you need.
 
@@ -37,6 +37,17 @@ them overwrites files without asking.
 `init` prompts for `name`, `email`, `machineClass`, `passwordManager` and
 `mailSetup`. `--apply` then installs the baseline packages, so **expect an
 interactive `sudo` prompt** — run it in a real terminal, not over a pipe.
+
+`passwordManager` is `1password`, `bitwarden` or `none`. Both password managers
+keep secrets off disk, and either one can sign git commits through its SSH agent:
+
+- **1Password** gets the most: `.gitconfig` turns signing on by default, and the
+  credential helpers for container registries, `glab` and npm all read from it,
+  as do the mail credentials.
+- **Bitwarden** (the flatpak) gets the `bw` CLI and its SSH agent. Signing is
+  turned on per machine in `~/.config/git/local.gitconfig`, and logins keep using
+  the FIDO2 key. The 1Password-only helpers above are not wired up for it.
+- **`none`** skips all of it.
 
 ### B. Existing machine — look before you overwrite
 

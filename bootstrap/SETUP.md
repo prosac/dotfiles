@@ -19,7 +19,7 @@ On my own machines, once 1Password is working (Step 2a), I point the remote at S
 `chezmoi git -- remote set-url origin git@github.com:prosac/dotfiles.git`. This repo
 takes no outside pushes or PRs. Anyone else should fork it or copy pieces.
 
-`init` prompts for `name`, `email`, `machineClass` (laptop/desktop), `passwordManager` (`1password`/`bitwarden`/`none` — only `1password` enables SSH-signed commits in `.gitconfig`), and `mailSetup` (bool, default `false` — set `true` to deploy the notmuch + lieer Gmail stack: scripts, systemd timer, Doom `:email notmuch`, lieer venv, mail dnf packages). On `apply`, the `run_onchange_after_install-packages.sh.tmpl` script runs (see Step 4 below) — interactive `sudo` will be required.
+`init` prompts for `name`, `email`, `machineClass` (laptop/desktop), `passwordManager` (`1password`/`bitwarden`/`none` — only `1password` turns commit signing on in `.gitconfig`; with `bitwarden` its SSH agent signs once signing is enabled in `~/.config/git/local.gitconfig`), and `mailSetup` (bool, default `false` — set `true` to deploy the notmuch + lieer Gmail stack: scripts, systemd timer, Doom `:email notmuch`, lieer venv, mail dnf packages). On `apply`, the `run_onchange_after_install-packages.sh.tmpl` script runs (see Step 4 below) — interactive `sudo` will be required.
 
 ### 0a. Signing key (only on `passwordManager = 1password`)
 
