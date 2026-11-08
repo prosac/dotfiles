@@ -21,7 +21,7 @@
 # and the reset reason reads "software ... 0xCF9" (the kernel's own reboot) --
 # the evidence is in /var/lib/systemd/pstore/, not in the reset reason.
 #
-# See ~/Documents/docs/yt6801-eno1-irq-storm-after-resume.md
+# See ~/notes/tech/yt6801-eno1-irq-storm-after-resume.md
 set -euo pipefail
 
 CONF=/etc/sysctl.d/99-lockup-panic.conf

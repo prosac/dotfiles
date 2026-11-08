@@ -2,7 +2,7 @@
 #
 # Adapted from upstream's k3s-rootless.service. Deliberately NOT enabled at boot: it costs ~1.5 GiB
 # idle, so it is started when wanted and stopped after. Full background, including the two
-# persistent root actions this depends on, is in ~/Documents/docs/k3s-local-setup.md.
+# persistent root actions this depends on, is in ~/notes/tech/k3s-local-setup.md.
 #
 # Three deviations from upstream, all deliberate:
 #

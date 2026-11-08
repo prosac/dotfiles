@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """``handover`` — what was left half-finished, shown when you sit down at a terminal.
 
-Handover docs in ``~/Documents/docs`` are only useful if you remember they exist. This reads their
+Handover docs in ``~/notes/tech`` are only useful if you remember they exist. This reads their
 frontmatter and prints the ones still marked open, newest first, with their tickets and the one next
 action — enough to pick something up without opening anything.
 
@@ -59,7 +59,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-DOCS_DIR = Path(os.environ.get("HANDOVER_DOCS_DIR", "~/Documents/docs")).expanduser()
+DOCS_DIR = Path(os.environ.get("HANDOVER_DOCS_DIR", "~/notes/tech")).expanduser()
 # A frontmatter block long enough for any real doc; the cap is what stops a file that opens with
 # `---` and never closes it from being read to the end.
 _MAX_FRONT_MATTER_LINES = 80
@@ -484,7 +484,7 @@ def _drop_index_line(stem: str) -> str:
     """Remove the one `~/CLAUDE.md` bullet for this doc. Matches the path, not the prose."""
     if not INDEX_FILE.exists():
         return "index file not found"
-    needle = f"`~/Documents/docs/{stem}.md`"
+    needle = f"`~/notes/tech/{stem}.md`"
     lines = INDEX_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
     hits = [i for i, line in enumerate(lines) if needle in line]
     if not hits:
@@ -597,7 +597,7 @@ def cmd_lint() -> int:
             problems += 1
     index_text = INDEX_FILE.read_text(encoding="utf-8") if INDEX_FILE.exists() else ""
     for path in tracked:
-        if f"`~/Documents/docs/{path.name}`" not in index_text:
+        if f"`~/notes/tech/{path.name}`" not in index_text:
             print(f"not in the index      {path.name}")
             problems += 1
     for item in collect(include_done=True):

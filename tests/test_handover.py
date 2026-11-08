@@ -2,7 +2,7 @@
 """Tests for `handover` — the lifecycle verbs and the ripple they perform.
 
 Everything runs against a throwaway docs tree via HANDOVER_DOCS_DIR / HANDOVER_INDEX_FILE /
-HANDOVER_SNAPDIR, so the real `~/Documents/docs` is never touched. Stdlib only, like the tool.
+HANDOVER_SNAPDIR, so the real `~/notes/tech` is never touched. Stdlib only, like the tool.
 
 Run: python3 tests/test_handover.py   (or `mise run ch:test`)
 """
@@ -66,7 +66,7 @@ class HandoverCase(unittest.TestCase):
         self.doc = self.docs / "a-thing.md"
         self.doc.write_text(DOC)
         self.index.write_text(
-            "# Index\n- `~/Documents/docs/a-thing.md` - the thing\n- `~/Documents/docs/other.md` - other\n"
+            "# Index\n- `~/notes/tech/a-thing.md` - the thing\n- `~/notes/tech/other.md` - other\n"
         )
         self.h = load_tool(self.docs, self.index, self.snaps)
 
@@ -302,7 +302,7 @@ class Remove(HandoverCase):
 
     def test_leaves_the_index_alone_when_a_doc_is_mentioned_twice(self):
         self.index.write_text(
-            "- `~/Documents/docs/a-thing.md` - one\n- `~/Documents/docs/a-thing.md` - two\n"
+            "- `~/notes/tech/a-thing.md` - one\n- `~/notes/tech/a-thing.md` - two\n"
         )
         self.h.cmd_done(self._item(), note=None)
         self._snapshot_now()

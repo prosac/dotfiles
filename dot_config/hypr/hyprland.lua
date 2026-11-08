@@ -95,7 +95,7 @@ hl.on("hyprland.start", function()
     --     the focused workspace, on any monitor, for focused reading.
     -- Resets to normal tiling for 0 or 2+ windows. Native w[tv1] smart-gaps can't
     -- do this (fixed px would break the narrow laptop), hence the socket2
-    -- listener. See the reading-column note in ~/Documents/docs/.
+    -- listener. See the reading-column note in ~/notes/tech/.
     hl.exec_cmd(hypr .. "/reading-column.py")
 
     -- hyprtasking — workspace overview plugin (Super+Tab). Built from UPSTREAM
@@ -116,7 +116,7 @@ hl.on("hyprland.start", function()
     -- rebuilds ONLY if it will not load, so a normal login compiles nothing.
     -- (After a routine `dnf update` bumped hyprland 0.56.2-1 -> -2 on 2026-08-31
     -- the .so stopped loading; a notification asking for a manual rebuild is not
-    -- a fix.) See ~/Documents/docs/hyprland-hyprtasking-plugin.md
+    -- a fix.) See ~/notes/tech/hyprland-hyprtasking-plugin.md
     hl.exec_cmd(home .. "/.local/bin/hyprtasking-rebuild --ensure")
 
     -- Apply current color-scheme to Hyprland borders + waybar CSS at startup
@@ -135,7 +135,7 @@ end)
 -- it, so there is no swww binary; waypaper's native `awww` backend is used rather
 -- than /usr/local/bin shims, which gave one daemon two names and let waypaper
 -- start a second one on top of this unit. See awww.service for that failure.
--- See ~/Documents/docs/hyprland-wallpaper-waypaper-setup.md
+-- See ~/notes/tech/hyprland-wallpaper-waypaper-setup.md
 
 
 -------------------------------
@@ -167,8 +167,8 @@ hl.env("QT_QPA_PLATFORMTHEME", "gtk3")
 -- what made the question unanswerable at the time.
 --
 -- Revival recipe (and the evdi caveat above, which still applies) is kept in
--- ~/Documents/docs/displaylink-dock-d6000-hyprland.md
--- Why it was removed: ~/Documents/docs/hyprland-freeze-atomic-commit-deadlock.md
+-- ~/notes/tech/displaylink-dock-d6000-hyprland.md
+-- Why it was removed: ~/notes/tech/hyprland-freeze-atomic-commit-deadlock.md
 
 
 -----------------------
@@ -667,7 +667,7 @@ hl.window_rule({
 -- touchpad event is logged with no env var or config to lower it. The log lives
 -- on tmpfs, so it costs RAM, not disk, and dies with the session.
 --
--- See ~/Documents/docs/hyprland-resume-hdmi-modeset-failure-lock-invisible.md
+-- See ~/notes/tech/hyprland-resume-hdmi-modeset-failure-lock-invisible.md
 hl.config({
     debug = {
         disable_logs = false,

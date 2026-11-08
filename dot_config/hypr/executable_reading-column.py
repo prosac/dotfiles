@@ -30,7 +30,7 @@ top/bottom instead of splitting left/right — `dwindle:split_width_multiplier`
 (0.85 in hyprland.lua) is what keeps the AUTO column side-by-side, and it only
 holds while AUTO_WIDTH stays close to the monitor height. Changing AUTO_WIDTH or
 READING_WIDTH means re-checking that ratio. See §8 of
-~/Documents/docs/hyprland-copr-migration.md.
+~/notes/tech/hyprland-copr-migration.md.
 
 Launched from hyprland.lua's hyprland.start handler (IPC/hyprctl-coupled glue lives in
 exec-once, mirroring monitor-hotplug.py — not a systemd user service).

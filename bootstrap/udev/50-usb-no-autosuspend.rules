@@ -7,8 +7,8 @@
 # 2025-12-31 — after which tlp.service was silently skipped by systemd
 # (ConditionResult=no, no journal entry) and the denylist protected nothing for
 # ~7 months. A udev rule does not depend on any power daemon winning a conflict.
-# See ~/Documents/docs/usb-stutter-fix.md and
-#     ~/Documents/docs/fido2-login-latency-power-management.md
+# See ~/notes/tech/usb-stutter-fix.md and
+#     ~/notes/tech/fido2-login-latency-power-management.md
 #
 # TEST=="power/control" guards devices that do not expose runtime PM at all.
 

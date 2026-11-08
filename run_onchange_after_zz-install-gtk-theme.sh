@@ -4,7 +4,7 @@
 # Fedora does not package Graphite, so it is built from source. Without this the
 # whole light/dark switch silently no-ops for GTK apps: gsettings gtk-theme would
 # name a theme that does not exist and GTK falls back to Adwaita, which never
-# changes. See ~/Documents/docs/system-color-scheme-switching.md.
+# changes. See ~/notes/tech/system-color-scheme-switching.md.
 #
 # `zz-` prefix: run_onchange_after_ scripts run in target-name order, and this
 # one needs sassc + gtk-murrine-engine from install-packages.sh ("i" < "z").

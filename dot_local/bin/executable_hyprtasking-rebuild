@@ -37,7 +37,7 @@ The running compositor's version is deliberately NOT consulted: after `dnf
 upgrade` the packages are new while the session still runs the old build, and the
 plugin must be built for what the NEXT login will run.
 
-See ~/Documents/docs/hyprland-hyprtasking-plugin.md
+See ~/notes/tech/hyprland-hyprtasking-plugin.md
 """
 
 import argparse

@@ -24,7 +24,7 @@ tmpfs *is* RAM and therefore part of the hibernation image, which is exactly why
 a stamp written before the image is taken is still there after the resume.
 
 Read by: hyprlock.conf, `text = cmd[update:2000] ...`
-See ~/Documents/docs/suspend-then-hibernate-setup.md
+See ~/notes/tech/suspend-then-hibernate-setup.md
 """
 
 import os

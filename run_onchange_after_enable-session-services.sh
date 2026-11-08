@@ -69,7 +69,7 @@ enable_unit() {
 # socket answers, so `waypaper --restore` cannot race the daemon. hyprpaper is
 # the superseded stack — it is a distro unit, not managed here, and enabling it
 # alongside awww would leave two wallpaper daemons fighting over the output.
-# See ~/Documents/docs/hyprland-wallpaper-waypaper-setup.md.
+# See ~/notes/tech/hyprland-wallpaper-waypaper-setup.md.
 SESSION_UNITS=(
   elephant.service
   waybar.service

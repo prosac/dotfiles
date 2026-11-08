@@ -273,7 +273,7 @@ is not the wedge: the design wakes a sealed, unattended laptop to run the most
 fragile operation in the kernel with every watchdog frozen and nobody watching.
 Note that hibernate had been tested successfully twice that day, both times from
 an awake desk session — which does **not** exercise the escalation path.
-Full incident: `~/Documents/docs/suspend-then-hibernate-setup.md`.
+Full incident: `~/notes/tech/suspend-then-hibernate-setup.md`.
 
 ⚠️ **This also turns zram OFF, and that is deliberate.** zram-generator gives
 zram swap priority 100 against the disk swapfile's -1, so it is first in line
@@ -284,7 +284,7 @@ Measured on 2026-08-12 with the container workload up: `pswpout 0`, zram DATA
 its four real use cases (low RAM, slow storage, no disk swap, SSD write-wear)
 none of them apply to 61 GiB + NVMe + a 64 GiB swapfile. Revert by deleting
 `/etc/systemd/zram-generator.conf` and running `systemctl daemon-reload`.
-Details: `~/Documents/docs/zram-swap-tuning.md`.
+Details: `~/notes/tech/zram-swap-tuning.md`.
 
 ⚠️ **This laptop has no deep/S3 state, so a closed lid still goes flat.**
 `/sys/power/mem_sleep` reads `[s2idle]` with no alternative, so a plain suspend

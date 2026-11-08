@@ -3,7 +3,7 @@
 
 Rootless k3s refuses to start without `cpuset` reaching the cgroup its unit runs in, failing with
 `failed to find cpuset cgroup (v2)`. Two of the three prerequisites are persistent root actions
-(see ~/Documents/docs/k3s-local-setup.md); this one is **not**. Enabling a controller in
+(see ~/notes/tech/k3s-local-setup.md); this one is **not**. Enabling a controller in
 `cgroup.subtree_control` lives only in memory, so it is lost on every reboot and re-login — which
 is exactly the sort of step that gets forgotten and then reads as a k3s bug rather than a missing
 one-liner.
@@ -31,7 +31,7 @@ That is the persistent, root-owned half of the setup. Create {DELEGATE_DROP_IN}:
     Delegate=cpu cpuset io memory pids
 
 then `sudo systemctl daemon-reload`, and enable it down the live hierarchy once (see
-~/Documents/docs/k3s-local-setup.md) so it takes effect without logging out."""
+~/notes/tech/k3s-local-setup.md) so it takes effect without logging out."""
 
 
 def app_slice(uid: int) -> Path:

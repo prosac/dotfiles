@@ -62,7 +62,7 @@
 #
 # Install via:  mise run bootstrap:pam-hyprlock
 # Selected by:  auth { pam { module = hyprlock-fido2 } }  in hyprlock.conf
-# See ~/Documents/docs/fido2-login-latency-power-management.md
+# See ~/notes/tech/fido2-login-latency-power-management.md
 
 auth        sufficient  pam_u2f.so cue
 auth        required    pam_unix.so nodelay

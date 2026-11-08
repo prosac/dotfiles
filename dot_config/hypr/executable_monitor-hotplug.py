@@ -74,7 +74,7 @@ def run_setup():
     # hot-plug: it stays alive but silently stops applying volume/brightness
     # (client still exits 0), so the media keys go dead. Bounce it so it
     # re-enumerates the current outputs.
-    # See ~/Documents/docs/swayosd-media-keys-hotplug-fix.md
+    # See ~/notes/tech/swayosd-media-keys-hotplug-fix.md
     subprocess.run(
         ["systemctl", "--user", "restart", "swayosd"], capture_output=True, text=True
     )

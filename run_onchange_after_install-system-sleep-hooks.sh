@@ -135,7 +135,7 @@ retry loop re-arm the key.
 Runs on post/* only. Never fails the resume: every error is swallowed, because a
 sleep hook that exits non-zero is a worse problem than an unreset key.
 
-See ~/Documents/docs/fido2-login-latency-power-management.md
+See ~/notes/tech/fido2-login-latency-power-management.md
 """
 
 import fcntl
@@ -307,7 +307,7 @@ journal is persistent here, so the full trace survives a reboot:
 
 Retire this once the trace is captured and the bug is filed -- it is a
 diagnostic, not a fix. See
-~/Documents/docs/hyprland-resume-hdmi-modeset-failure-lock-invisible.md
+~/notes/tech/hyprland-resume-hdmi-modeset-failure-lock-invisible.md
 
 Never fails a resume: every error is swallowed, because a sleep hook that exits
 non-zero is a worse problem than a missing trace.
@@ -636,7 +636,7 @@ sudo chmod +x "$DRM_HOOK"
 sudo tee "$DRM_UNIT" > /dev/null << EOF
 [Unit]
 Description=Arm drm.debug around idle DPMS transitions to capture refused modesets
-Documentation=file://$HOME/Documents/docs/hyprland-resume-hdmi-modeset-failure-lock-invisible.md
+Documentation=file://$HOME/notes/tech/hyprland-resume-hdmi-modeset-failure-lock-invisible.md
 # Deliberately NOT Conflicts=systemd-suspend.service: that would stop the
 # watcher at suspend and nothing would bring it back after resume, which is
 # exactly when it is needed. The arm()/disarm() owner field is what keeps the

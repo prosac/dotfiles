@@ -20,7 +20,7 @@ denied". As the session user it needs no authentication at all.
 Compositor-agnostic: hyprlock uses ext-session-lock, so this works under both
 Hyprland and niri.
 
-See ~/Documents/docs/suspend-then-hibernate-setup.md
+See ~/notes/tech/suspend-then-hibernate-setup.md
 """
 
 import os

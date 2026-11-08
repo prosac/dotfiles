@@ -21,7 +21,7 @@ Run by razer-dpi.service. Change the speed by editing DPI below; to try a
 value live:
   busctl --user call org.razer /org/razer/device/<id> razer.device.dpi setDPI qq 1600 1600
 (<id> from `busctl --user call org.razer /org/razer razer.devices getDevices`).
-See ~/Documents/docs/usb-stutter-fix.md (Razer section).
+See ~/notes/tech/usb-stutter-fix.md (Razer section).
 """
 
 import json

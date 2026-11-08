@@ -12,7 +12,7 @@
 #
 # Not gated: on a machine without a cable the hook only ever finds nothing to do.
 #
-# See ~/Documents/docs/wifi-slow-despite-cable-scan-latency.md
+# See ~/notes/tech/wifi-slow-despite-cable-scan-latency.md
 set -euo pipefail
 
 CONF=/etc/NetworkManager/conf.d/90-wired-wins.conf

@@ -21,7 +21,7 @@
 # and the niri colors.kdl write only fires under niri. The gsettings + GTK +
 # waybar + hyprlock + ghostty paths are identical for both sessions.
 #
-# See ~/Documents/docs/system-color-scheme-switching.md for the full fan-out map.
+# See ~/notes/tech/system-color-scheme-switching.md for the full fan-out map.
 #
 # Usage:
 #   toggle-color-scheme           -> flip dark <-> light
