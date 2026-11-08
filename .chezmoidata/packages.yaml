@@ -82,6 +82,13 @@ packages:
   # would silently get an untested toolkit. Pinning the source makes a bad
   # upgrade a loud install failure instead of a silent breakage.
   #
+  # terra.excludepkgs=glaze-devel: hyprland-devel needs glaze-static, which only
+  # the lionheartp COPR ships, and it pins that COPR's glaze-devel (8.4 noarch).
+  # Terra's newer glaze-devel (9.1) wins dnf's "best candidate" pick and then
+  # cannot coexist with it, so hyprland-devel -- and through its exact-version
+  # pin, hyprland and the whole stack -- stops upgrading, ending in a quiet
+  # "Nothing to do". Hit on 2026-11-08 going to Hyprland 0.57.1.
+  #
   # copr:...:lionheartp:Hyprland.includepkgs=...: that COPR builds a great deal
   # more than Hyprland, and without a pin a weak dependency can pull an
   # arbitrary package out of it in preference to Fedora's or Terra's build. The
@@ -98,7 +105,7 @@ packages:
   # resolves the repoid to concrete repos at write time, so it must run AFTER
   # the COPRs are enabled (the template already orders it that way).
   repoOverridesF43Plus:
-    - terra.excludepkgs=quickshell*
+    - terra.excludepkgs=quickshell*,glaze-devel
     - "copr:copr.fedorainfracloud.org:lionheartp:Hyprland.includepkgs=hypr*,aquamarine,aquamarine-devel,xdg-desktop-portal-hyprland,waypaper,glaze-devel"
 
   # dnf packages installed on every Fedora.
