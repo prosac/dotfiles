@@ -2,6 +2,7 @@
 README.md
 PLAYBOOK.md
 bootstrap
+docs
 
 # Tests for the scripts in dot_local/bin. Unlisted, chezmoi would deploy ~/tests.
 tests
