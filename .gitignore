@@ -1,3 +1,7 @@
 # Python bytecode cache (e.g. from term-ident). Never belongs in source.
 __pycache__/
 *.pyc
+
+# Holds a real email address. Managed by chezmoi on this machine, kept out of this
+# public repo. Listed here because `mise run ch:commit` stages with `git add -A`.
+dot_config/git/allowed-signers
