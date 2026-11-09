@@ -35,6 +35,10 @@ git_config = ["~/.gitconfig", "~/.config/git"]
 # on the first native-messaging request). So the vault, its unlock state and
 # its prompts stay here, and one resolved value crosses per explicit request.
 provider = "op"
+# Profiles' `[broker] confirm` references are released only after op-intent's
+# dialog, shown here on the host (~/repos/op-intent, sandy-al1a). Without
+# op-intent installed they are refused, never served silently.
+approver = ["~/.local/bin/op-intent", "approve"]
 {{- else if eq .passwordManager "bitwarden" }}
 provider = "bw"
 {{- end }}
