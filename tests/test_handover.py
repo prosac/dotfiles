@@ -2,7 +2,7 @@
 """Tests for `handover` — the lifecycle verbs and the ripple they perform.
 
 Everything runs against a throwaway docs tree via HANDOVER_DOCS_DIR / HANDOVER_INDEX_FILE /
-HANDOVER_SNAPDIR, so the real `~/notes/tech` is never touched. Stdlib only, like the tool.
+HANDOVER_SNAPDIR, so the real notes trees are never touched. Stdlib only, like the tool.
 
 Run: python3 tests/test_handover.py   (or `mise run ch:test`)
 """
@@ -66,7 +66,7 @@ class HandoverCase(unittest.TestCase):
         self.doc = self.docs / "a-thing.md"
         self.doc.write_text(DOC)
         self.index.write_text(
-            "# Index\n- `~/notes/tech/a-thing.md` - the thing\n- `~/notes/tech/other.md` - other\n"
+            f"# Index\n- `{self.docs}/a-thing.md` - the thing\n- `{self.docs}/other.md` - other\n"
         )
         self.h = load_tool(self.docs, self.index, self.snaps)
 
@@ -302,13 +302,57 @@ class Remove(HandoverCase):
 
     def test_leaves_the_index_alone_when_a_doc_is_mentioned_twice(self):
         self.index.write_text(
-            "- `~/notes/tech/a-thing.md` - one\n- `~/notes/tech/a-thing.md` - two\n"
+            f"- `{self.docs}/a-thing.md` - one\n- `{self.docs}/a-thing.md` - two\n"
         )
         self.h.cmd_done(self._item(), note=None)
         self._snapshot_now()
         self.h.cmd_rm(self._item(), note=None, force=False)
 
         self.assertEqual(self.index.read_text().count("a-thing.md"), 2)
+
+
+class TwoTrees(unittest.TestCase):
+    """Notes split into my own tree and the company's: one listing, each doc's ripple in its tree."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.tech, self.work = root / "tech", root / "work"
+        self.tech.mkdir()
+        self.work.mkdir()
+        (self.tech / "mine.md").write_text(DOC.replace("A thing", "Mine"))
+        self.doc = self.work / "theirs.md"
+        self.doc.write_text(DOC.replace("A thing", "Theirs"))
+        self.index = root / "CLAUDE.md"
+        self.index.write_text(f"- `{self.tech}/mine.md` - m\n- `{self.work}/theirs.md` - t\n")
+        self.snaps = root / "snapshots"
+        self.snaps.mkdir()
+        self.h = load_tool(Path(f"{self.tech}{os.pathsep}{self.work}{os.pathsep}{root / 'absent'}"),
+                           self.index, self.snaps)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_one_listing_spans_both_trees_and_a_missing_one_is_skipped(self):
+        self.assertEqual({i.path.stem for i in self.h.collect()}, {"mine", "theirs"})
+
+    def test_lint_finds_each_doc_under_its_own_tree(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.h.cmd_lint()
+        self.assertNotIn("not in the index", out.getvalue())
+
+    def test_rm_writes_the_ledger_and_drops_the_index_line_of_the_docs_own_tree(self):
+        theirs = self.h.resolve("theirs", self.h.collect(include_done=True))
+        self.h.cmd_done(theirs, note="gone to the repo")
+        snap = self.snaps / "2099-01-01-0000"
+        snap.mkdir()
+        theirs = self.h.resolve("theirs", self.h.collect(include_done=True))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.h.cmd_rm(theirs, note="gone to the repo", force=False), 0)
+        self.assertIn("gone to the repo", (self.work / "handover-log.md").read_text())
+        self.assertFalse((self.tech / "handover-log.md").exists())
+        self.assertEqual(self.index.read_text(), f"- `{self.tech}/mine.md` - m\n")
 
 
 # --- the surface the shell and the skill depend on ---------------------------------------

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """``handover`` — what was left half-finished, shown when you sit down at a terminal.
 
-Handover docs in ``~/notes/tech`` are only useful if you remember they exist. This reads their
+Handover docs in ``~/notes/tech`` and ``~/work/notes`` are only useful if you remember they exist. This reads their
 frontmatter and prints the ones still marked open, newest first, with their tickets and the one next
 action — enough to pick something up without opening anything.
 
@@ -59,7 +59,14 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-DOCS_DIR = Path(os.environ.get("HANDOVER_DOCS_DIR", "~/notes/tech")).expanduser()
+#: Every notes tree, in listing order: my own machines and projects, then the company's. A
+#: `:`-separated list in the environment, like PATH. A tree that does not exist is skipped, so a
+#: machine without work notes needs no override.
+DOCS_DIRS = tuple(
+    Path(d).expanduser()
+    for d in os.environ.get("HANDOVER_DOCS_DIR", "~/notes/tech:~/work/notes").split(os.pathsep)
+    if d
+)
 # A frontmatter block long enough for any real doc; the cap is what stops a file that opens with
 # `---` and never closes it from being read to the end.
 _MAX_FRONT_MATTER_LINES = 80
@@ -68,12 +75,13 @@ _OPEN, _DONE = "open", "done"
 INDEX_FILE = Path(os.environ.get("HANDOVER_INDEX_FILE", "~/CLAUDE.md")).expanduser()
 _DEFAULT_SNAP_DIR = Path("/home/.snapshots/hourly")
 SNAP_DIR = Path(os.environ.get("HANDOVER_SNAPDIR", _DEFAULT_SNAP_DIR))
-LEDGER = DOCS_DIR / "handover-log.md"
+#: Each tree keeps its own ledger, next to the docs it records.
+LEDGER_NAME = "handover-log.md"
 #: The keys this tool owns. `untrack` removes exactly these and leaves everything else alone.
 _HANDOVER_KEYS = ("status", "tickets", "next", "short", "closed")
 #: Where a reference to a deleted doc is likely to hide. Reported, never auto-edited.
 _REFERENCE_DIRS = (
-    DOCS_DIR,
+    *DOCS_DIRS,
     Path("~/.claude/projects/-home-jo/memory").expanduser(),
     Path("~/.claude/plans").expanduser(),
 )
@@ -201,6 +209,24 @@ def _touched_at(updated: str | list[str] | None, path: Path) -> float:
     return path.stat().st_mtime
 
 
+def _all_docs() -> list[Path]:
+    return [p for root in DOCS_DIRS if root.is_dir() for p in sorted(root.rglob("*.md"))]
+
+
+def _tree_of(path: Path) -> Path:
+    """The notes tree a doc lives in (its ledger's home)."""
+    for root in DOCS_DIRS:
+        if path.is_relative_to(root):
+            return root
+    return path.parent
+
+
+def shown(path: Path) -> str:
+    """How the index names a doc: `~/…` under the home directory, else the absolute path."""
+    home = Path.home()
+    return f"~/{path.relative_to(home)}" if path.is_relative_to(home) else str(path)
+
+
 def collect(include_done: bool = False) -> list[Handover]:
     """Every tracked doc: open ones first, then done ones, each most recently touched first.
 
@@ -210,7 +236,7 @@ def collect(include_done: bool = False) -> list[Handover]:
     """
     wanted = {_OPEN, _DONE} if include_done else {_OPEN}
     found: list[Handover] = []
-    for path in sorted(DOCS_DIR.rglob("*.md")):
+    for path in _all_docs():
         fields = read_front_matter(path)
         status = str(fields.get("status", "")).lower()
         if status not in wanted:
@@ -480,11 +506,11 @@ def _fresh_snapshot(path: Path) -> Path | None:
     return max(newer, key=_snapshot_taken_at) if newer else None
 
 
-def _drop_index_line(stem: str) -> str:
+def _drop_index_line(path: Path) -> str:
     """Remove the one `~/CLAUDE.md` bullet for this doc. Matches the path, not the prose."""
     if not INDEX_FILE.exists():
         return "index file not found"
-    needle = f"`~/notes/tech/{stem}.md`"
+    needle = f"`{shown(path)}`"
     lines = INDEX_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
     hits = [i for i, line in enumerate(lines) if needle in line]
     if not hits:
@@ -513,17 +539,20 @@ def _referencing_files(stem: str, deleted: Path) -> list[Path]:
     return found
 
 
-def _append_ledger(stem: str, note: str, snapshot: Path | None) -> None:
-    if not LEDGER.exists():
-        LEDGER.write_text(
+def _append_ledger(deleted: Path, note: str, snapshot: Path | None) -> Path:
+    stem = deleted.stem
+    ledger = _tree_of(deleted) / LEDGER_NAME
+    if not ledger.exists():
+        ledger.write_text(
             "---\npublish: false\n---\n\n# Handover log\n\n"
             "Every handover doc `handover rm` has deleted, and where its knowledge went. This is the\n"
             "record that makes deleting safe: the doc is gone, the answer to \"where did that go\" is not.\n\n"
             "| date | doc | where the knowledge lives now | snapshot |\n|---|---|---|---|\n",
             encoding="utf-8",
         )
-    with LEDGER.open("a", encoding="utf-8") as handle:
+    with ledger.open("a", encoding="utf-8") as handle:
         handle.write(f"| {_today()} | `{stem}.md` | {note or '—'} | `{snapshot.name if snapshot else '—'}` |\n")
+    return ledger
 
 
 def cmd_rm(item: Handover, note: str | None, force: bool) -> int:
@@ -563,9 +592,9 @@ def cmd_rm(item: Handover, note: str | None, force: bool) -> int:
     references = _referencing_files(stem, item.path)
     item.path.unlink()
     print(f"deleted {stem}.md")
-    print(f"  {_drop_index_line(stem)}")
-    _append_ledger(stem, note or "", snapshot)
-    print(f"  ledger row written ({LEDGER.name}), undo snapshot {snapshot.name}")
+    print(f"  {_drop_index_line(item.path)}")
+    ledger = _append_ledger(item.path, note or "", snapshot)
+    print(f"  ledger row written ({shown(ledger)}), undo snapshot {snapshot.name}")
     if references:
         print(f"  ⚠️  {len(references)} file(s) still reference it — repoint by hand, they need judgment:")
         for path in references:
@@ -580,7 +609,7 @@ def cmd_lint() -> int:
     problems = 0
     today = datetime.date.today()
     tracked: list[Path] = []
-    for path in sorted(DOCS_DIR.rglob("*.md")):
+    for path in _all_docs():
         fields = read_front_matter(path)
         if not any(key in fields for key in _HANDOVER_KEYS):
             continue
@@ -597,7 +626,7 @@ def cmd_lint() -> int:
             problems += 1
     index_text = INDEX_FILE.read_text(encoding="utf-8") if INDEX_FILE.exists() else ""
     for path in tracked:
-        if f"`~/notes/tech/{path.name}`" not in index_text:
+        if f"`{shown(path)}`" not in index_text:
             print(f"not in the index      {path.name}")
             problems += 1
     for item in collect(include_done=True):
