@@ -239,3 +239,14 @@
 
 (map! :leader
       :desc "Ediff init.el vs Doom template" "h d E" #'+my/ediff-init-with-template)
+
+;; Clipboard: pgtk Emacs serves a bare `text/plain' request through the
+;; `STRING' converter, and `STRING'/`TEXT'/`COMPOUND_TEXT' are encoded as
+;; Latin-1 regardless of `selection-coding-system', so umlauts pasted into
+;; Google Chat arrived broken. On Wayland nobody needs Latin-1: serve UTF-8.
+;; Verify: copy "äöü", then `wl-paste -t text/plain' (and -t TEXT).
+(define-advice xselect-convert-to-string (:around (fn sel type val) pgtk-utf8-string)
+  (if (and (memq type '(STRING TEXT COMPOUND_TEXT)) (eq (window-system) 'pgtk))
+      (let ((r (funcall fn sel 'UTF8_STRING val)))
+        (if (consp r) (cons type (cdr r)) r))
+    (funcall fn sel type val)))
