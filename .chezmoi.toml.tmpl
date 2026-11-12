@@ -33,6 +33,11 @@
      not re-run `chezmoi init` since this key appeared still applies cleanly. */ -}}
 {{- $reposRoot := promptStringOnce . "reposRoot" "Where your git checkouts live (sandy mounts repos from here)" "~/repos" -}}
 {{- $sandyWorkspace := promptStringOnce . "sandyWorkspace" "Default sandy workspace on this machine (blank = the only one there is)" "" -}}
+{{/* Words that must never reach a private repo via `sandy outbox file`
+     (employer, hosts). Never prompted and never written here -- this repo is
+     public -- so carry over whatever this machine's chezmoi.toml already has;
+     edit them there. Empty is safe: a scrub destination then refuses all. */ -}}
+{{- $sandyOutboxScrub := dig "sandyOutboxScrub" (list) . -}}
 
 [data]
 name = {{ $name | quote }}
@@ -47,3 +52,4 @@ gitPeerHost = {{ $gitPeerHost | quote }}
 gitPeerLan = {{ $gitPeerLan | quote }}
 reposRoot = {{ $reposRoot | quote }}
 sandyWorkspace = {{ $sandyWorkspace | quote }}
+sandyOutboxScrub = [{{ range $i, $w := $sandyOutboxScrub }}{{ if $i }}, {{ end }}{{ $w | quote }}{{ end }}]

@@ -11,6 +11,10 @@
      reference would break `chezmoi apply` everywhere until it was. */ -}}
 {{- $reposRoot := dig "reposRoot" "~/repos" . -}}
 {{- $workspace := dig "sandyWorkspace" "" . -}}
+{{- /* The outbox scrub words are names that must stay out of a private repo,
+       so they live only in the generated chezmoi.toml, never here (this repo
+       is public). An empty list is safe: a scrub destination refuses all. */ -}}
+{{- $outboxScrub := dig "sandyOutboxScrub" (list) . -}}
 # Managed by chezmoi -- edit via `chezmoi edit ~/.config/sandy/config.toml`.
 repos_root = {{ $reposRoot | quote }}
 {{ if $workspace }}default_workspace = {{ $workspace | quote }}
@@ -42,3 +46,18 @@ approver = ["~/.local/bin/op-intent", "approve"]
 {{- else if eq .passwordManager "bitwarden" }}
 provider = "bw"
 {{- end }}
+
+# Where an agent's outbox reports can be filed (`sandy outbox file <id> --to
+# NAME`). Machine config on purpose: no workspace profile chooses where a
+# sandbox's words go.
+[outbox]
+scrub = [{{ range $i, $w := $outboxScrub }}{{ if $i }}, {{ end }}{{ $w | quote }}{{ end }}]
+
+[outbox.destinations.sandy]
+kind  = "beans"                   # a draft bean in sandy's repo
+path  = {{ printf "%s/sandy" $reposRoot | quote }}
+scrub = true                      # private repo: refused while a scrub word is in it
+
+[outbox.destinations.notes]
+kind = "directory"                # <id>-<slug>.md, 0600
+path = "~/notes/outbox"
