@@ -1,0 +1,7 @@
+#!/bin/sh
+# Bitwarden CLI. There is no standalone `bw` rpm and Bitwarden is installed as
+# a flatpak here, so the binary is only reachable through the flatpak's own
+# command entry point -- `flatpak run com.bitwarden.desktop` alone launches the
+# GUI. A script on PATH, not a shell alias, so programs find it too: sandy's
+# secret broker (and the outbox it carries) starts only when `bw` is on PATH.
+exec flatpak run --command=bw com.bitwarden.desktop "$@"

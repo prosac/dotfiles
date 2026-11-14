@@ -54,6 +54,11 @@ tests
 .config/git-peer
 {{- end }}
 
+{{- /* The Bitwarden CLI wrapper, only where Bitwarden is the password manager. */}}
+{{- if ne (dig "passwordManager" "none" .) "bitwarden" }}
+.local/bin/bw
+{{- end }}
+
 {{- /* Registry logins come from 1Password through ~/.local/bin/docker-credential-op, never from a
        `podman login`/`docker login` on disk. Only where 1Password is the password manager; `dig`
        for the same reason as gitPeerSetup above. */}}
