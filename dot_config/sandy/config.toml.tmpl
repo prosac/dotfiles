@@ -27,7 +27,9 @@ repos_root = {{ $reposRoot | quote }}
 # 1Password binary is needed in the sandbox.
 ssh_agent_socket = "~/.1password/agent.sock"
 {{- else if eq .passwordManager "bitwarden" }}
-ssh_agent_socket = "~/.bitwarden-ssh-agent.sock"
+# The Flatpak Bitwarden's agent, the same socket dot_zshrc names in
+# SSH_AUTH_SOCK. It exists only while the desktop app runs with its SSH agent on.
+ssh_agent_socket = "~/.var/app/com.bitwarden.desktop/data/.bitwarden-ssh-agent.sock"
 {{- end }}
 git_config = ["~/.gitconfig", "~/.config/git"]
 
